@@ -34,7 +34,7 @@ import (
 )
 
 type fileRef struct {
-	filepath   string
+	audioPath  string
 	outputPath string
 }
 
@@ -69,17 +69,18 @@ func main() {
 	}
 	cfg, err := config.ReadConfigFile(*configFile)
 	if err != nil {
-		fmt.Println("Error opening config file", err)
+		fmt.Printf("Error in config file %s: %v\n", *configFile, err)
 		return
 	}
 
+	// By default, Error and Info messages are logged
 	if cfg.Verbose {
 		logger.SetFilterLevel(level.Error | level.Info | level.Debug)
 	}
 
 	cubicConfig, err := config.CreateCubicConfig(cfg)
 	if err != nil {
-		fmt.Println("Error parsing config file", err)
+		fmt.Printf("Error in config file %s: %v\n", *configFile, err)
 		return
 	}
 	cfg.CubicConfig = cubicConfig
@@ -146,10 +147,8 @@ func createClient(cfg config.Config) (*cubic.Client, error) {
 
 // getOutputWriter returns a file writer for the given path
 func getOutputWriter(outputPath string) (io.WriteCloser, error) {
-	path := fmt.Sprintf("%s.txt", outputPath)
-
 	// Create the file
-	file, err := os.Create(path)
+	file, err := os.Create(outputPath)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create output file: %v", err)
 	}
@@ -190,8 +189,8 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]file
 
 		outputPath := filepath.Join(outputDir, filepath.Base(path))
 		files = append(files, fileRef{
-			filepath:   path,
-			outputPath: outputPath,
+			audioPath:  path,
+			outputPath: outputPath + ".txt",
 		})
 		return nil
 	})
@@ -222,10 +221,10 @@ func transcribeFiles(workerID int, cfg config.Config, wg *sync.WaitGroup, client
 // transcribeFile streams the contents of a single audio file to the Cubic server and writes
 // the transcript to the output file
 func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubic.Client, logger log.Logger) {
-	audio, err := os.Open(input.filepath)
+	audio, err := os.Open(input.audioPath)
 	defer audio.Close()
 	if err != nil {
-		logger.Error("file", input.filepath, "err", err, "message", "Couldn't open audio file")
+		logger.Error("file", input.audioPath, "err", err, "message", "Couldn't open audio file")
 		return
 	}
 
@@ -242,7 +241,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		cfg.CubicConfig,
 		audio, // The audio file to send
 		func(response *cubicpb.RecognitionResponse) { // The callback for results
-			logger.Debug("workerID", workerID, "file", input.filepath, "segmentID", segmentID)
+			logger.Debug("workerID", workerID, "file", input.audioPath, "segmentID", segmentID)
 			for _, r := range response.Results {
 				// Note: The Results object includes a lot of detail about the ASR output.
 				// For simplicity, this example just uses a few of the available properties.
@@ -261,7 +260,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		})
 
 	if err != nil {
-		logger.Error("file", input.filepath, "err", simplifyGrpcErrors(cfg, err))
+		logger.Error("file", input.audioPath, "err", simplifyGrpcErrors(cfg, err))
 	}
 }
 

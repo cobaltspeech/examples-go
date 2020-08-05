@@ -55,6 +55,10 @@ func ReadConfigFile(filename string) (Config, error) {
 	if config.Server.Address == "" {
 		return config, fmt.Errorf("missing server address")
 	}
+
+	if config.NumWorkers < 1 {
+		return config, fmt.Errorf("NumWorkers must be greater than 0")
+	}
 	return config, nil
 }
 
@@ -79,7 +83,7 @@ func CreateCubicConfig(cfg Config) (*cubicpb.RecognitionConfig, error) {
 	case ".raw":
 		audioEncoding = cubicpb.RecognitionConfig_RAW_LINEAR16
 	default:
-		return nil, fmt.Errorf("unknown file extension %s", ext)
+		return nil, fmt.Errorf("unsupported file extension %s", ext)
 	}
 
 	return &cubicpb.RecognitionConfig{
