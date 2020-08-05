@@ -33,7 +33,7 @@ import (
 	pbduration "google.golang.org/protobuf/types/known/durationpb"
 )
 
-type inputs struct {
+type fileRef struct {
 	filepath   string
 	outputPath string
 }
@@ -49,27 +49,6 @@ will be used to determine which codec to use.  Use WAV or FLAC for best results.
 
 Usage: transcribe -config sample.config.toml -input /path/to/audio/files -output /path/where/transcripts/will/be/written
 `
-
-func createClient(cfg config.Config) (*cubic.Client, error) {
-	var client *cubic.Client
-	var err error
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
-	}
-
-	if cfg.Server.Insecure {
-		client, err = cubic.NewClient(cfg.Server.Address, cubic.WithInsecure())
-	} else {
-		client, err = cubic.NewClient(cfg.Server.Address)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
-	}
-
-	return client, nil
-}
 
 func main() {
 	logger := log.NewLeveledLogger()
@@ -128,8 +107,9 @@ func main() {
 		numWorkers = cfg.NumWorkers
 	}
 	logger.Info("msg", "Processing files", "server", cfg.Server.Address, "fileCount", fileCount, "numWorkers", numWorkers)
+
 	// Setup channel for communicating between the various goroutines
-	fileChannel := make(chan inputs, numWorkers)
+	fileChannel := make(chan fileRef, numWorkers)
 
 	// Start multiple goroutines.  The first pushes to the fileChannel, and the rest
 	// each pull from the fileChannel and send requests to cubic server.
@@ -145,6 +125,29 @@ func main() {
 	wg.Wait() // Wait for all workers to finish
 }
 
+// createClient instantiates the Client from the Cubic SDK to communicate with the server
+// specified in the config file
+func createClient(cfg config.Config) (*cubic.Client, error) {
+	var client *cubic.Client
+	var err error
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
+	}
+
+	if cfg.Server.Insecure {
+		client, err = cubic.NewClient(cfg.Server.Address, cubic.WithInsecure())
+	} else {
+		client, err = cubic.NewClient(cfg.Server.Address)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
+	}
+
+	return client, nil
+}
+
 // getOutputWriter returns a file writer for the given path
 func getOutputWriter(outputPath string) (io.WriteCloser, error) {
 	path := fmt.Sprintf("%s.txt", outputPath)
@@ -157,6 +160,7 @@ func getOutputWriter(outputPath string) (io.WriteCloser, error) {
 	return file, nil
 }
 
+// checkDir validates that the specified directory path exists and is a directory
 func checkDir(dir, desc string) error {
 	fi, err := os.Stat(dir)
 	if err != nil {
@@ -169,7 +173,7 @@ func checkDir(dir, desc string) error {
 }
 
 // loadFiles walks through all the files in inputDir that end in extension and adds them to a list for processing
-func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]inputs, error) {
+func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]fileRef, error) {
 	if err := checkDir(inputDir, "input"); err != nil {
 		return nil, err
 	}
@@ -178,7 +182,7 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]inpu
 	} else if err := checkDir(outputDir, "output"); err != nil {
 		return nil, err
 	}
-	files := make([]inputs, 0)
+	files := make([]fileRef, 0)
 	filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
 		// files, outputDir, and extension are available as closures
 		if err != nil {
@@ -189,7 +193,7 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]inpu
 		}
 
 		outputPath := filepath.Join(outputDir, filepath.Base(path))
-		files = append(files, inputs{
+		files = append(files, fileRef{
 			filepath:   path,
 			outputPath: outputPath,
 		})
@@ -198,7 +202,8 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]inpu
 	return files, nil
 }
 
-func feedInputFiles(fileChannel chan<- inputs, files []inputs, wg *sync.WaitGroup, logger log.Logger) {
+// feedInputFiles iterates through a list of files and pushes the reference into a fileChannel.
+func feedInputFiles(fileChannel chan<- fileRef, files []fileRef, wg *sync.WaitGroup, logger log.Logger) {
 	for _, f := range files {
 		fileChannel <- f
 	}
@@ -207,8 +212,10 @@ func feedInputFiles(fileChannel chan<- inputs, files []inputs, wg *sync.WaitGrou
 	close(fileChannel)
 }
 
+// transcribeFiles pulls references from the file channel and sends them for transcription
+// until the channel is empty
 func transcribeFiles(workerID int, cfg config.Config, wg *sync.WaitGroup, client *cubic.Client,
-	fileChannel <-chan inputs, logger log.Logger) {
+	fileChannel <-chan fileRef, logger log.Logger) {
 	logger.Debug("Worker starting", workerID)
 	for input := range fileChannel {
 		transcribeFile(input, workerID, cfg, client, logger)
@@ -216,7 +223,9 @@ func transcribeFiles(workerID int, cfg config.Config, wg *sync.WaitGroup, client
 	wg.Done()
 }
 
-func transcribeFile(input inputs, workerID int, cfg config.Config, client *cubic.Client, logger log.Logger) {
+// transcribeFile streams the contents of a single audio file to the Cubic server and writes
+// the transcript to the output file
+func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubic.Client, logger log.Logger) {
 	audio, err := os.Open(input.filepath)
 	defer audio.Close()
 	if err != nil {
@@ -239,6 +248,10 @@ func transcribeFile(input inputs, workerID int, cfg config.Config, client *cubic
 		func(response *cubicpb.RecognitionResponse) { // The callback for results
 			logger.Debug("workerID", workerID, "file", input.filepath, "segmentID", segmentID)
 			for _, r := range response.Results {
+				// Note: The Results object includes a lot of detail about the ASR output.
+				// For simplicity, this example just uses a few of the available properties.
+				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
+				// for a description of what other information is available.
 				if !r.IsPartial && len(r.Alternatives) > 0 {
 					prefix := ""
 					if cfg.Prefix {
@@ -256,9 +269,9 @@ func transcribeFile(input inputs, workerID int, cfg config.Config, client *cubic
 	}
 }
 
-// asDuration converts a pbduration.Duration to a time.Duration
-// so it is more nicely formatted. Don't worry about overflow since
-// it's unlikely that the timestamp in a file would be more than 200 years!
+// formatDuration converts a pbduration.Duration to a time.Duration
+// so its string representation is more nicely formatted. Don't worry about overflow since
+// it's unlikely that the timestamp in a file would be more than 290 years!
 func formatDuration(x *pbduration.Duration) string {
 	d := time.Duration(x.GetSeconds()) * time.Second
 	d += time.Duration(x.GetNanos()) * time.Nanosecond

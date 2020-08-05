@@ -59,7 +59,11 @@ func ReadConfigFile(filename string) (Config, error) {
 }
 
 // CreateCubicConfig checks the value of cfg.Extension and populates
-// the property cfg.CubicConfig if there was no error.
+// the RecognitionConfig struct if there was no error.
+// Note: there are many more options available to control the
+// Cubic output. This example illustrates a simple case.  Please see
+// https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionconfig
+// for description of other available options.
 func CreateCubicConfig(cfg Config) (*cubicpb.RecognitionConfig, error) {
 	var audioEncoding cubicpb.RecognitionConfig_Encoding
 	ext := strings.ToLower(cfg.Extension)
