@@ -25,9 +25,10 @@ import (
 
 // ServerConfig contains the Diatheke server settings
 type ServerConfig struct {
-	Address  string
-	Insecure bool
-	ModelID  string
+	Address     string
+	Insecure    bool
+	ModelID     string
+	IdleTimeout int64
 }
 
 // Config contains the application configuration
@@ -39,7 +40,6 @@ type Config struct {
 	LogFilePath string
 	Verbose     bool
 	Extension   string
-	IdleTimeout int64
 	CubicConfig *cubicpb.RecognitionConfig
 }
 
@@ -85,7 +85,7 @@ func CreateCubicConfig(cfg Config) (*cubicpb.RecognitionConfig, error) {
 	return &cubicpb.RecognitionConfig{
 		ModelId:       cfg.Server.ModelID,
 		AudioEncoding: audioEncoding,
-		IdleTimeout:   &pbduration.Duration{Seconds: cfg.IdleTimeout},
+		IdleTimeout:   &pbduration.Duration{Seconds: cfg.Server.IdleTimeout},
 		AudioChannels: cfg.Channels,
 	}, nil
 }

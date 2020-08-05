@@ -131,10 +131,6 @@ func createClient(cfg config.Config) (*cubic.Client, error) {
 	var client *cubic.Client
 	var err error
 
-	if err != nil {
-		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
-	}
-
 	if cfg.Server.Insecure {
 		client, err = cubic.NewClient(cfg.Server.Address, cubic.WithInsecure())
 	} else {
@@ -142,7 +138,7 @@ func createClient(cfg config.Config) (*cubic.Client, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
+		return nil, simplifyGrpcErrors(cfg, err)
 	}
 
 	return client, nil
@@ -282,6 +278,9 @@ func formatDuration(x *pbduration.Duration) string {
 // Not meant to be production error handling.
 func simplifyGrpcErrors(cfg config.Config, err error) error {
 	switch {
+	case strings.Contains(err.Error(), "context deadline exceeded"):
+		return fmt.Errorf("timeout trying to reach server at '%s'", cfg.Server.Address)
+
 	case strings.Contains(err.Error(), "transport: Error while dialing dial tcp"):
 		return fmt.Errorf("unable to reach server at address '%s'", cfg.Server.Address)
 
