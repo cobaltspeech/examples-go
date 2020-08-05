@@ -54,13 +54,12 @@ func createClient(cfg config.Config) (*cubic.Client, error) {
 	var client *cubic.Client
 	var err error
 
-	dur, err := time.ParseDuration("10s")
 	if err != nil {
 		return nil, fmt.Errorf("error creating client for server '%s': %v", cfg.Server.Address, err)
 	}
 
 	if cfg.Server.Insecure {
-		client, err = cubic.NewClient(cfg.Server.Address, cubic.WithInsecure(), cubic.WithConnectTimeout(dur))
+		client, err = cubic.NewClient(cfg.Server.Address, cubic.WithInsecure())
 	} else {
 		client, err = cubic.NewClient(cfg.Server.Address)
 	}
