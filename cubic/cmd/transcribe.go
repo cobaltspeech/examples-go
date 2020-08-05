@@ -178,7 +178,7 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]file
 		return nil, err
 	}
 	files := make([]fileRef, 0)
-	filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
 		// files, outputDir, and extension are available as closures
 		if err != nil {
 			return err
@@ -194,6 +194,9 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]file
 		})
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 	return files, nil
 }
 
@@ -222,11 +225,11 @@ func transcribeFiles(workerID int, cfg config.Config, wg *sync.WaitGroup, client
 // the transcript to the output file
 func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubic.Client, logger log.Logger) {
 	audio, err := os.Open(input.audioPath)
-	defer audio.Close()
 	if err != nil {
 		logger.Error("file", input.audioPath, "err", err, "message", "Couldn't open audio file")
 		return
 	}
+	defer audio.Close()
 
 	w, err := getOutputWriter(input.outputPath)
 	if err != nil {

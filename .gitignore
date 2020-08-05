@@ -15,5 +15,5 @@
 # vendor/
 
 **/tmp
+**/bin
 cubic/transcribe
-
