@@ -1,0 +1,50 @@
+# Audio channels to transcribe.  Defaults to mono.
+#   [0] for mono
+#   [0,1] for stereo
+#	[0,2] for first and third channels, etc.
+Channels = [0]
+
+# Number of concurrent requests to send to cubicsvr.
+# Please note, while this value is defined client-side the performance
+# will be limited by the available computational ability of the server.
+# If you are the only connection to an 8-core server, then "8" is a
+# reasonable value.  A lower number is suggested if there are multiple
+# clients connecting to the same machine.
+NumWorkers = 8
+
+# Only files with this extension will be transcribed
+Extension  = ".wav"
+
+# Include debugging information in the output
+Verbose = true
+
+# Include channel id and timestamp before each utterance
+Prefix = false
+
+# Specify the Cubic server connection.  This is a subset of the available
+# options the client can specify to the server.  See 
+# https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionconfig
+# for more details.
+[Server]
+    # Specify the server address as "<url>:<port>"
+    Address = "localhost:9727"
+
+    # Set to true if the server is running without a
+    # secure (TLS) connection (not recommended for
+    # production environments).
+    Insecure = true
+
+    # Specify the cubic model to use for the transcriptions.
+    # This string should match one of the models defined in cubicsvr.cfg.toml
+    # on the server. A server may have multiple models available and the client
+    # code may use other means to determine which one to call for a given file.  
+    # For simplicity, this example just assumes configuring one model at a time.
+    ModelID = "1"
+
+    # Idle Timeout of the created Recognizer. If no audio data is received by 
+    # the recognizer for this duration, ongoing rpc calls will result in an error,
+    # the recognizer will be destroyed and thus more audio may not be sent to the
+    # same recognizer. The server may impose a limit on the maximum idle timeout
+    # that can be specified, and if the value in this setting exceeds that serverside
+    # value, calling StreamingRecognize will fail with an error.
+    IdleTimeout = 30
