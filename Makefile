@@ -8,7 +8,7 @@ LINTER_VERSION := 1.27.0
 # Linux vs Darwin detection for the machine on which the build is taking place (not to be used for the build target)
 DEV_OS := $(shell uname -s | tr A-Z a-z)
 
-all: build-cubic-example
+build: build-cubic-example
 
 $(LINTER):
 	mkdir -p $(BINDIR)
