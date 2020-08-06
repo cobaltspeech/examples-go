@@ -251,11 +251,11 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
 				// for a description of what other information is available.
 				if !r.IsPartial && len(r.Alternatives) > 0 {
-					prefix := "\n\n"
+					prefix := ""
 					if cfg.Prefix {
 						prefix = fmt.Sprintf("[Channel %d - %s]", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()))
 					}
-					fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
+					fmt.Fprintf(w, "\n\n%s%s", prefix, r.Alternatives[0].Transcript)
 				}
 			}
 			segmentID++
