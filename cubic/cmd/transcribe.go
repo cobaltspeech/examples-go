@@ -235,6 +235,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 	if err != nil {
 		logger.Error("file", input.outputPath, "err", err, "message", "Couldn't open output file writer")
 	}
+	defer w.Close()
 
 	// Counter for segments
 	segmentID := 0
@@ -255,7 +256,14 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 					if cfg.Prefix {
 						prefix = fmt.Sprintf("[Channel %d - %s]", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()))
 					}
-					fmt.Fprintf(w, "\n\n%s%s", prefix, r.Alternatives[0].Transcript)
+					_, innerErr := fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
+					if innerErr != nil {
+						logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append transcript")
+					}
+					_, innerErr = fmt.Fprintln(w, "")
+					if innerErr != nil {
+						logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append newline")
+					}
 				}
 			}
 			segmentID++
