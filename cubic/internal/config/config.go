@@ -29,6 +29,7 @@ type ServerConfig struct {
 	Insecure    bool
 	ModelID     string
 	IdleTimeout int64
+	GRPCTimeout int
 }
 
 // Config contains the application configuration
@@ -59,6 +60,11 @@ func ReadConfigFile(filename string) (Config, error) {
 	if config.NumWorkers < 1 {
 		return config, fmt.Errorf("NumWorkers must be greater than 0")
 	}
+
+	if config.Server.GRPCTimeout < 1 {
+		// If timeout not specified, set to default
+		config.Server.GRPCTimeout = 2
+	}
 	return config, nil
 }
 
@@ -87,9 +93,11 @@ func CreateCubicConfig(cfg Config) (*cubicpb.RecognitionConfig, error) {
 	}
 
 	return &cubicpb.RecognitionConfig{
-		ModelId:       cfg.Server.ModelID,
-		AudioEncoding: audioEncoding,
-		IdleTimeout:   &pbduration.Duration{Seconds: cfg.Server.IdleTimeout},
-		AudioChannels: cfg.Channels,
+		ModelId:                cfg.Server.ModelID,
+		AudioEncoding:          audioEncoding,
+		IdleTimeout:            &pbduration.Duration{Seconds: cfg.Server.IdleTimeout},
+		AudioChannels:          cfg.Channels,
+		EnableConfusionNetwork: true,
+		EnableRawTranscript:    true,
 	}, nil
 }
