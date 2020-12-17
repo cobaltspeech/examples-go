@@ -8,7 +8,7 @@ LINTER_VERSION := 1.27.0
 # Linux vs Darwin detection for the machine on which the build is taking place (not to be used for the build target)
 DEV_OS := $(shell uname -s | tr A-Z a-z)
 
-build: build-cubic-example
+build: build-cubic-example build-diatheke-example
 
 $(LINTER):
 	mkdir -p $(BINDIR)
@@ -36,6 +36,7 @@ fmt:
 # so add a new line here whenever there's a new example added
 lint-check: $(LINTER)
 	cd cubic && $(LINTER) run --deadline=2m
+	cd diatheke && $(LINTER) run --deadline=2m
 
 # Run tests
 .PHONY: test
@@ -45,7 +46,13 @@ test:
 # Build
 .PHONY: build-cubic-example
 build-cubic-example:
-	cd cubic && go mod tidy && go build -o ./bin/transcribe ./cmd 
+	cd cubic && go mod tidy && go build -o ./bin/transcribe ./cmd
+
+.PHONY: build-diatheke-example
+build-diatheke-example:
+	cd diatheke && go mod tidy && \
+	go build -o ./bin/audio_client ./cmd/audio_client && \
+	go build -o ./bin/cli_client ./cmd/cli_client
 
 # Clean
 .PHONY: clean
