@@ -6,7 +6,7 @@ The [cubic](./cubic) folder gives an example of a client that iterates through a
 
 ## Diatheke Example
 The [diatheke](./diatheke) folder contains two example clients that interact with Diatheke.
-* [audio_client](./diatheke/cmd/audio_client), which is a voice only interface where the application accepts user audio, processes the result, then gives back an audio response. The audio I/O is handled by a user-specified external process, such as sox, aplay, arecord, etc.
-* [cli_client](./diatheke/cmd/cli_client), which is a text only interface where the application processes text from the user, then gives a reply as text.
+* [audio_client](./diatheke/cmd/audio_client) is a voice only interface where the application accepts user audio, processes the result, then gives back an audio response. The audio I/O is handled by a user-specified external process, such as sox, aplay, arecord, etc.
+* [cli_client](./diatheke/cmd/cli_client) is a text only interface where the application processes text from the user, then gives a reply as text.
 
 See [here](./diatheke/README.md) for more details.
