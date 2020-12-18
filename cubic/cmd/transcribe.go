@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -37,6 +38,13 @@ import (
 type fileRef struct {
 	audioPath  string
 	outputPath string
+}
+
+type resultWord struct {
+	word      string
+	timestamp time.Duration
+	channel   uint32
+	uttID     int
 }
 
 var longMsg = `
@@ -238,23 +246,39 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 	}
 	defer w.Close()
 
+	multichannel := len(cfg.Channels) > 1
+
 	// Counter for segments
 	segmentID := 0
 
-	var lines []*cubicpb.RecognitionResult
+	var words []resultWord
 	// Send the Streaming Recognize config
 	err = client.StreamingRecognize(context.Background(),
 		cfg.CubicConfig,
 		audio, // The audio file to send
 		func(response *cubicpb.RecognitionResponse) { // The callback for results
 			logger.Debug("workerID", workerID, "file", input.audioPath, "segmentID", segmentID)
+			o := regexp.MustCompile("(?i)hm|yeah")
 			for _, r := range response.Results {
 				// Note: The Results object includes a lot of detail about the ASR output.
 				// For simplicity, this example just uses a few of the available properties.
 				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
 				// for a description of what other information is available.
 				if !r.IsPartial && len(r.Alternatives) > 0 {
-					lines = append(lines, r)
+					for _, wi := range r.Alternatives[0].GetWords() {
+						word := wi.GetWord()
+						if o.MatchString(word) {
+							continue
+						}
+
+						wordRes := resultWord{
+							word:      wi.GetWord(),
+							timestamp: formatDuration(wi.GetStartTime()),
+							channel:   r.AudioChannel,
+							uttID:     segmentID,
+						}
+						words = append(words, wordRes)
+					}
 				}
 			}
 			segmentID++
@@ -264,31 +288,39 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		logger.Error("file", input.audioPath, "err", simplifyGrpcErrors(cfg, err))
 	}
 
-	if len(cfg.Channels) > 1 {
+	if multichannel {
 		// While CubicSvr guarantees that the results are in order
 		// chronologicaly _per channel_, there is no such promise made about the
 		// relationship between channels. Therefore, if we have multiple channels,
 		// sort by startTime (results.Alternatives[0].StartTime).
 		// If start times are the same, maintain the original order.
 
-		sort.Slice(lines, func(i, j int) bool {
-			return formatDuration(lines[i].Alternatives[0].GetStartTime()) < formatDuration(lines[j].Alternatives[0].GetStartTime())
+		sort.Slice(words, func(i, j int) bool {
+			return words[i].timestamp < words[j].timestamp
 		})
 	}
 
-	for _, r := range lines {
+	prevUttID := -1
+	for _, word := range words {
+
 		prefix := ""
-		if cfg.Prefix {
-			prefix = fmt.Sprintf("[Channel %d - %s]", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()).String())
+		channel := ""
+		if word.uttID != prevUttID {
+			prevUttID = word.uttID
+			_, err = fmt.Fprintln(w, "")
+			if err != nil {
+				logger.Error("file", input.audioPath, "err", err, "msg", "Couldn't append newline")
+			}
+			if multichannel {
+				channel = fmt.Sprintf("Speaker %d", word.channel+1)
+			}
+			prefix = fmt.Sprintf("%s (%s): ", channel, word.timestamp.String())
 		}
-		_, innerErr := fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
+		_, innerErr := fmt.Fprintf(w, "%s %s", prefix, word.word)
 		if innerErr != nil {
-			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append transcript")
+			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append word")
 		}
-		_, innerErr = fmt.Fprintln(w, "")
-		if innerErr != nil {
-			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append newline")
-		}
+
 	}
 }
 

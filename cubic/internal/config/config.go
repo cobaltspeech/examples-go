@@ -93,11 +93,11 @@ func CreateCubicConfig(cfg Config) (*cubicpb.RecognitionConfig, error) {
 	}
 
 	return &cubicpb.RecognitionConfig{
-		ModelId:                cfg.Server.ModelID,
-		AudioEncoding:          audioEncoding,
-		IdleTimeout:            &pbduration.Duration{Seconds: cfg.Server.IdleTimeout},
-		AudioChannels:          cfg.Channels,
-		EnableConfusionNetwork: true,
-		EnableRawTranscript:    true,
+		ModelId:               cfg.Server.ModelID,
+		AudioEncoding:         audioEncoding,
+		IdleTimeout:           &pbduration.Duration{Seconds: cfg.Server.IdleTimeout},
+		AudioChannels:         cfg.Channels,
+		EnableWordTimeOffsets: true,
+		EnableRawTranscript:   true,
 	}, nil
 }

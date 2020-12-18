@@ -34,6 +34,7 @@ Prefix = true
     # Set to true if the server is running without a
     # secure (TLS) connection (not recommended for
     # production environments).
+    #Insecure = false
     Insecure = true
 
     # Specify the cubic model to use for the transcriptions.
@@ -41,9 +42,10 @@ Prefix = true
     # on the server. A server may have multiple models available and the client
     # code may use other means to determine which one to call for a given file.  
     # For simplicity, this example just assumes configuring one model at a time.
-    #ModelID = "en-us-16-close"
-    #ModelID = "en-us-8-close"
-    ModelID = "1"
+    #ModelID = "en-us-16-far"
+    ModelID = "en_US-16khz-FF"
+    #ModelID = "en_US-8khz-FF"
+    #ModelID = "1"
 
     # Idle Timeout of the created Recognizer. If no audio data is received by 
     # the recognizer for this duration, ongoing rpc calls will result in an error,
