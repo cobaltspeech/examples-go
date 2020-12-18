@@ -92,10 +92,10 @@ func (rec *Recorder) Start() error {
 }
 
 // Stop the external recording application.
-func (rec *Recorder) Stop() error {
+func (rec *Recorder) Stop() {
 	if rec.cancel == nil || rec.cmd == nil {
 		// Ignore if it is already stopped.
-		return nil
+		return
 	}
 
 	// By the time we exit this function, we want everything to be reset
@@ -109,11 +109,7 @@ func (rec *Recorder) Stop() error {
 	// Cancel the context, which should kill the executable. Then wait
 	// for it to finish.
 	rec.cancel()
-	if err := rec.cmd.Wait(); err != nil {
-		return err
-	}
-
-	return nil
+	rec.cmd.Wait() //nolint: errcheck // Error is likely from being killed.
 }
 
 // Output returns an io.Reader that reads audio from the application.

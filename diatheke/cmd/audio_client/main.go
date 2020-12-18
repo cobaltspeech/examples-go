@@ -170,12 +170,8 @@ func waitForInput(
 
 	// Record until we get a result
 	result, err := diatheke.ReadASRAudio(stream, recorder.Output(), 8192)
-	stopErr := recorder.Stop()
-	if stopErr != nil && err != nil {
-		return nil, fmt.Errorf("%v, %v", err, stopErr)
-	} else if stopErr != nil {
-		return nil, stopErr
-	} else if err != nil {
+	recorder.Stop()
+	if err != nil {
 		return nil, err
 	}
 
