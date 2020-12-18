@@ -31,7 +31,7 @@ These examples are intended to be run from the command line, where they will acc
 ```
 
 ### Config File
-Each example requires a configuration file to be specified. An example config file with documentation about each parameter in the file is provided in [here](./config.sample.toml). The same config file will work for both examples.
+Each example requires a configuration file to be specified. An example config file with documentation about each parameter in the file is provided [here](./config.sample.toml). The same config file will work for both examples.
 
 ### Audio I/O
 For the `audio_client` example, the audio I/O is handled exclusively by external applications such as aplay/arecord and sox. The specific application can be anything as long the following conditions are met:

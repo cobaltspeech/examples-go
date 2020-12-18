@@ -59,7 +59,7 @@ func main() {
 		fmt.Printf("error getting server version: %v\n", err)
 		return
 	}
-	fmt.Printf("Server Version\n")
+	fmt.Printf("Server Versions\n")
 	fmt.Printf("  Diatheke: %v\n", ver.Diatheke)
 	fmt.Printf("  Chosun (NLU): %v\n", ver.Chosun)
 	fmt.Printf("  Cubic (ASR): %v\n", ver.Cubic)
