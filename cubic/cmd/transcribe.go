@@ -199,7 +199,7 @@ func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]file
 		outputPath := filepath.Join(outputDir, filepath.Base(path))
 		files = append(files, fileRef{
 			audioPath:  path,
-			outputPath: outputPath + ".txt",
+			outputPath: outputPath,
 		})
 		return nil
 	})
@@ -240,44 +240,74 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 	}
 	defer audio.Close()
 
-	w, err := getOutputWriter(input.outputPath)
+	filename := fmt.Sprintf("%s.txt", input.outputPath)
+	w, err := getOutputWriter(filename)
 	if err != nil {
-		logger.Error("file", input.outputPath, "err", err, "message", "Couldn't open output file writer")
+		logger.Error("file", filename, "err", err, "message", "Couldn't open output file writer")
 	}
 	defer w.Close()
-
+	wordFilter := regexp.MustCompile(cfg.FilterWordRegex)
+	uttFilter := regexp.MustCompile(cfg.FilterUttRegex)
 	multichannel := len(cfg.Channels) > 1
 
 	// Counter for segments
 	segmentID := 0
 
 	var words []resultWord
+	var chWriters map[uint32]io.WriteCloser
+	if multichannel && cfg.SeparateChannelFiles {
+		chWriters = make(map[uint32]io.WriteCloser)
+		for _, ch := range cfg.Channels {
+			filename := fmt.Sprintf("%s-channel-%d.txt", input.outputPath, ch)
+			cw, err := getOutputWriter(filename)
+			if err != nil {
+				logger.Error("file", filename, "err", err, "message", "Couldn't open output file writer")
+			}
+			chWriters[ch] = cw
+		}
+	}
 	// Send the Streaming Recognize config
 	err = client.StreamingRecognize(context.Background(),
 		cfg.CubicConfig,
 		audio, // The audio file to send
 		func(response *cubicpb.RecognitionResponse) { // The callback for results
 			logger.Debug("workerID", workerID, "file", input.audioPath, "segmentID", segmentID)
-			o := regexp.MustCompile("(?i)hm|yeah")
+
 			for _, r := range response.Results {
 				// Note: The Results object includes a lot of detail about the ASR output.
 				// For simplicity, this example just uses a few of the available properties.
 				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
 				// for a description of what other information is available.
 				if !r.IsPartial && len(r.Alternatives) > 0 {
+					if uttFilter.MatchString(r.Alternatives[0].Transcript) {
+						logger.Debug("msg", "Filtering utterance", "utt", r.Alternatives[0].Transcript)
+						continue
+					}
+					var filteredWords []string
 					for _, wi := range r.Alternatives[0].GetWords() {
 						word := wi.GetWord()
-						if o.MatchString(word) {
+						if wordFilter.MatchString(word) {
+							logger.Debug("msg", "Filtering word", "word", word)
 							continue
 						}
 
 						wordRes := resultWord{
-							word:      wi.GetWord(),
+							word:      word,
 							timestamp: formatDuration(wi.GetStartTime()),
 							channel:   r.AudioChannel,
 							uttID:     segmentID,
 						}
 						words = append(words, wordRes)
+						filteredWords = append(filteredWords, word)
+					}
+					if cfg.SeparateChannelFiles {
+						cw := chWriters[r.AudioChannel]
+						if cw != nil {
+							_, err = fmt.Fprintln(cw, strings.Join(filteredWords, " "))
+							if err != nil {
+								logger.Error("utt", r.Alternatives[0].Transcript, "err", err, "message", "Couldn't write to channel file writer")
+							}
+						}
 					}
 				}
 			}

@@ -34,14 +34,17 @@ type ServerConfig struct {
 
 // Config contains the application configuration
 type Config struct {
-	Channels    []uint32
-	NumWorkers  int
-	Prefix      bool
-	Server      ServerConfig
-	LogFilePath string
-	Verbose     bool
-	Extension   string
-	CubicConfig *cubicpb.RecognitionConfig
+	Channels             []uint32
+	NumWorkers           int
+	Prefix               bool
+	Server               ServerConfig
+	LogFilePath          string
+	Verbose              bool
+	Extension            string
+	FilterWordRegex      string // Any words matching this regex will not be included in the transcript
+	FilterUttRegex       string // Any full utterances matching this regex will not be included in the transcript
+	SeparateChannelFiles bool   // If true, write out separate files for each channel in addition to the combined transcript
+	CubicConfig          *cubicpb.RecognitionConfig
 }
 
 // ReadConfigFile attempts to load the given config file
