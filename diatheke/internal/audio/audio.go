@@ -17,12 +17,14 @@
 package audio
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // Config contains the information to run an external
@@ -40,11 +42,14 @@ func (ac *Config) ArgList() []string {
 // Recorder launches an external application to handle recording audio.
 type Recorder struct {
 	// Internal data
-	appConfig Config
-	cmd       *exec.Cmd
-	ctx       context.Context
-	cancel    context.CancelFunc
-	stdout    io.ReadCloser
+	appConfig    Config
+	cmd          *exec.Cmd
+	ctx          context.Context
+	cancel       context.CancelFunc
+	stdout       io.ReadCloser
+	buffer       bytes.Buffer
+	bufferOffset int // start index in the buffer to read from, or <0 to skip the old buffer data on reads
+	bufferStart  int // the global read index at the start of the buffer initially 0
 }
 
 // NewRecorder returns a new recorder object based the given configuration.
@@ -208,4 +213,139 @@ func (p *Player) PushAudio(audio []byte) error {
 // Input returns an io.Writer that TTS audio can be pushed to.
 func (p *Player) Input() io.Writer {
 	return p.stdin
+}
+
+// StoppableReader wraps an existing Reader that can be "stopped"
+// with a function call where the next Read() will return EOF, but future
+// reads will be sucessful. This reader can also be "rewound" to a point in
+// the past that allows some old data to be re-read before any new data is
+// read. The Rewind() functionality has a limitation that Rewind() cannot
+// go back more than the maximum buffer size and Rewind() cannot be called
+// two times without Reset() being called in-between.
+// The maximum buffer size parameter is not a hard limit, but if the
+// buffer grows past maxBufferSize*bufferSizeFactor then it will be pruned
+// down to a size of maxBufferSize the oldest bytes will be removed from
+// the buffer.
+type StoppableReader struct {
+	mu                 sync.Mutex
+	origReader         io.Reader    // the original reader
+	appendReader       io.Reader    // the wrapped reader (buffers what is read)
+	currentReader      io.Reader    // the current reader, may include buffered bytes if Rewind() was called
+	buffer             bytes.Buffer // a buffer of previously read bytes
+	bufferStartOffset  int          // "actual" index at the start of the buffer
+	maxBufferSize      int          // number of bytes stored in the buffer before it may be trimmed
+	bufferSizeFactor   float32      // buffer will be pruned if it grows to maxaBufferSize*bufferSizeFactor
+	pauseRead          bool         // set to true if the next Read() should return EOF
+	rewindWithoutReset bool         // Check to make sure Rewind() is not called twice without a Reset() (buffer is modified by reading a rewound reader)
+}
+
+// NewStoppableReader creates a new stoppable reader that wraps the
+// provided reader and sets the specified maximum buffer size.
+func NewStoppableReader(reader io.Reader, maxBufferSize int) *StoppableReader {
+	var sr StoppableReader
+	sr.origReader = reader
+	sr.appendReader = io.TeeReader(reader, &sr.buffer)
+	sr.currentReader = sr.appendReader
+	sr.bufferStartOffset = 0
+	sr.maxBufferSize = maxBufferSize
+	sr.bufferSizeFactor = 2.0
+	sr.pauseRead = false
+	sr.rewindWithoutReset = false
+	return &sr
+}
+
+// Read bytes from the wrapped Reader and append the bytes to the buffer.
+func (sr *StoppableReader) Read(p []byte) (n int, err error) {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	if sr.pauseRead {
+		sr.pauseRead = false // let the next Read() call return data
+		return 0, io.EOF
+	}
+
+	// Shrink the buffer if is too large
+	if sr.buffer.Len() > int(sr.bufferSizeFactor)*sr.maxBufferSize { // TODO come back to this block when working
+		origLen := sr.buffer.Len()
+		sr.buffer = *bytes.NewBuffer(sr.buffer.Bytes()[sr.buffer.Len()-sr.maxBufferSize:])
+		sr.bufferStartOffset += origLen - sr.maxBufferSize
+	}
+	return sr.currentReader.Read(p)
+}
+
+// Stop forces the next Read() of the StoppableReader to return EOF, but
+// additional Read() operations will continue to read bytes as usual.
+func (sr *StoppableReader) Stop() {
+	sr.mu.Lock()
+	sr.pauseRead = true
+	sr.mu.Unlock()
+}
+
+// Rewind returns a new Reader that starts at the specified byte offset.
+// This may allow data that had been previously read to be re-read.
+// If the StoppableAudioReader has a maximum buffer size and data
+// was not fully retained for the specified offset an error will be
+// returned, but a reader with as much buffered context as possible
+// will still be returned (what to do in this situation is up to
+// the caller).
+// if resetTimeZero is true, then future "offset" values sent to Rewing()
+// will consider the start of the last rewound stream to be zero, otherwise
+// the "zero time" will remain the start of the original input stream.
+func (sr *StoppableReader) Rewind(offset int, resetTimeZero bool) error {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+
+	var err error
+	if sr.rewindWithoutReset {
+		// This is only occasionally an error (depending on how it is used). The caller may choose
+		// to ignore the error, but it is discouraged.
+		err = fmt.Errorf("Rewind() should not be called twice without a Reset() between them because reading a rewound buffer may modify the buffered data")
+	} else {
+		sr.rewindWithoutReset = true
+	}
+
+	adjustedOffset := offset
+	if offset < sr.bufferStartOffset {
+		// Offset value is before the start of the buffer, data returned will be incomplete.
+		adjustedOffset = 0
+		err = fmt.Errorf("StoppableAudioReader::Rewind() error, the requested offset %d is smaller that the start of the buffer: %d",
+			offset, sr.bufferStartOffset)
+	} else if offset > (sr.bufferStartOffset + sr.buffer.Len()) {
+		// Offset value is after the end of the buffer (impossible to buffer future data).
+		err = fmt.Errorf("StoppableAudioReader::Rewind() error, the requested offset %d is larger that the end of the buffer (in the future!): %d",
+			offset, sr.bufferStartOffset+sr.buffer.Len())
+		sr.currentReader = sr.appendReader
+		return err
+	} else {
+		// The requested offset is in the current buffer.
+		adjustedOffset = offset - sr.bufferStartOffset
+		err = nil
+	}
+
+	// Return a MultiReader that will first read bytes from a (selected) copy of the buffer,
+	// and will read from the wrapped Reader afterwards (and will continue to add to the
+	// buffer when reading new data).
+	partialBuffer := bytes.NewReader(sr.buffer.Bytes()[adjustedOffset:])
+	sr.currentReader = io.MultiReader(partialBuffer, sr.appendReader)
+
+	// If the flag is set to consider the sbuftart of the rewound reader to be the new time
+	// zero, adjust the buffer start offset.  This will be a value <=0 because the data
+	// at the start of the buffer will be *before* the new time zero.
+	if resetTimeZero {
+		sr.bufferStartOffset = -(adjustedOffset + sr.buffer.Len() - adjustedOffset)
+	}
+
+	return err
+}
+
+// Reset clears the buffered data.
+// It is recommended to call Reset() between calls to Rewind().
+func (sr *StoppableReader) Reset() {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	sr.buffer.Reset()
+	sr.appendReader = io.TeeReader(sr.origReader, &sr.buffer)
+	sr.currentReader = sr.appendReader
+	sr.bufferStartOffset = 0
+	sr.pauseRead = false
+	sr.rewindWithoutReset = false
 }
