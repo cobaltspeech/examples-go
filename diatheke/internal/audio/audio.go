@@ -42,14 +42,11 @@ func (ac *Config) ArgList() []string {
 // Recorder launches an external application to handle recording audio.
 type Recorder struct {
 	// Internal data
-	appConfig    Config
-	cmd          *exec.Cmd
-	ctx          context.Context
-	cancel       context.CancelFunc
-	stdout       io.ReadCloser
-	buffer       bytes.Buffer
-	bufferOffset int // start index in the buffer to read from, or <0 to skip the old buffer data on reads
-	bufferStart  int // the global read index at the start of the buffer initially 0
+	appConfig Config
+	cmd       *exec.Cmd
+	ctx       context.Context
+	cancel    context.CancelFunc
+	stdout    io.ReadCloser
 }
 
 // NewRecorder returns a new recorder object based the given configuration.
@@ -264,7 +261,7 @@ func (sr *StoppableReader) Read(p []byte) (n int, err error) {
 	}
 
 	// Shrink the buffer if is too large
-	if sr.buffer.Len() > int(sr.bufferSizeFactor)*sr.maxBufferSize { // TODO come back to this block when working
+	if sr.buffer.Len() > int(sr.bufferSizeFactor)*sr.maxBufferSize {
 		origLen := sr.buffer.Len()
 		sr.buffer = *bytes.NewBuffer(sr.buffer.Bytes()[sr.buffer.Len()-sr.maxBufferSize:])
 		sr.bufferStartOffset += origLen - sr.maxBufferSize
@@ -303,7 +300,8 @@ func (sr *StoppableReader) Rewind(offset int, resetTimeZero bool) error {
 		sr.rewindWithoutReset = true
 	}
 
-	adjustedOffset := offset
+	//adjustedOffset := offset
+	var adjustedOffset int
 	if offset < sr.bufferStartOffset {
 		// Offset value is before the start of the buffer, data returned will be incomplete.
 		adjustedOffset = 0
@@ -318,7 +316,6 @@ func (sr *StoppableReader) Rewind(offset int, resetTimeZero bool) error {
 	} else {
 		// The requested offset is in the current buffer.
 		adjustedOffset = offset - sr.bufferStartOffset
-		err = nil
 	}
 
 	// Return a MultiReader that will first read bytes from a (selected) copy of the buffer,
