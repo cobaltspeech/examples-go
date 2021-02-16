@@ -13,6 +13,34 @@
     # server config file.
     ModelID = "1"
 
+# Specify the Wake Word Server (a cubicsvr)
+[WakeWordServer]
+    # Specify the server address as "<url>:<port>"
+    Address = "localhost:9062"
+
+    # Set to true if the server is running without a
+    # secure (TLS) connection (not recommended for
+    # production environments).
+    Insecure = true
+
+    # Specify the Diatheke model to use when creating new sessions.
+    # This string should match one of the models defined in the Diatheke
+    # server config file.    
+    ModelID = "1"
+    
+    # How much audio to buffer to allow wake word audio to be re-read
+    # by diatheke to verify the wake word as part of commands.
+    # Setting this too small may cause an error.
+    AudioBufferSec = 10.0
+
+    # A list of wake phrases to look from in the wake word model's
+    # ASR output. 
+    WakePhrases = [ "OKCOBALT", "OKGOOGLE" ]
+    
+    # The minimum reported confidence of wake words to treat the
+    # wake word as detected.
+    MinWakePhraseConfidence = 0.950
+
 # If using audio input/output, specify the executables to handle
 # recording and playback (e.g., sox). The encoding should match what
 # is specified in the Diatheke server config file. The sample rate is

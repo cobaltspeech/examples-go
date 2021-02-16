@@ -30,11 +30,21 @@ type ServerConfig struct {
 	ModelID  string
 }
 
+type WakeWordServerConfig struct {
+	Address                 string
+	Insecure                bool
+	ModelID                 string
+	AudioBufferSec          float32
+	WakePhrases             []string
+	MinWakePhraseConfidence float64
+}
+
 // Config contains the application configuration
 type Config struct {
-	Server    ServerConfig
-	Recording audio.Config
-	Playback  audio.Config
+	Server         ServerConfig
+	WakeWordServer WakeWordServerConfig
+	Recording      audio.Config
+	Playback       audio.Config
 }
 
 // ReadConfigFile attempts to load the given config file
