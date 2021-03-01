@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -240,6 +241,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 	// Counter for segments
 	segmentID := 0
 
+	var lines []*cubicpb.RecognitionResult
 	// Send the Streaming Recognize config
 	err = client.StreamingRecognize(context.Background(),
 		cfg.CubicConfig,
@@ -252,18 +254,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
 				// for a description of what other information is available.
 				if !r.IsPartial && len(r.Alternatives) > 0 {
-					prefix := ""
-					if cfg.Prefix {
-						prefix = fmt.Sprintf("[Channel %d - %s]", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()))
-					}
-					_, innerErr := fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
-					if innerErr != nil {
-						logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append transcript")
-					}
-					_, innerErr = fmt.Fprintln(w, "")
-					if innerErr != nil {
-						logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append newline")
-					}
+					lines = append(lines, r)
 				}
 			}
 			segmentID++
@@ -272,15 +263,42 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 	if err != nil {
 		logger.Error("file", input.audioPath, "err", simplifyGrpcErrors(cfg, err))
 	}
+
+	if len(cfg.Channels) > 1 {
+		// While CubicSvr guarantees that the results are in order
+		// chronologicaly _per channel_, there is no such promise made about the
+		// relationship between channels. Therefore, if we have multiple channels,
+		// sort by startTime (results.Alternatives[0].StartTime).
+		// If start times are the same, maintain the original order.
+
+		sort.Slice(lines, func(i, j int) bool {
+			return formatDuration(lines[i].Alternatives[0].GetStartTime()) < formatDuration(lines[j].Alternatives[0].GetStartTime())
+		})
+	}
+
+	for _, r := range lines {
+		prefix := ""
+		if cfg.Prefix {
+			prefix = fmt.Sprintf("[Channel %d - %s] ", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()))
+		}
+		_, innerErr := fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
+		if innerErr != nil {
+			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append transcript")
+		}
+		_, innerErr = fmt.Fprintln(w, "")
+		if innerErr != nil {
+			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append newline")
+		}
+	}
 }
 
 // formatDuration converts a pbduration.Duration to a time.Duration
 // so its string representation is more nicely formatted. Don't worry about overflow since
 // it's unlikely that the timestamp in a file would be more than 290 years!
-func formatDuration(x *pbduration.Duration) string {
+func formatDuration(x *pbduration.Duration) time.Duration {
 	d := time.Duration(x.GetSeconds()) * time.Second
 	d += time.Duration(x.GetNanos()) * time.Nanosecond
-	return d.String()
+	return d
 }
 
 // simplifyGrpcErrors converts semi-cryptic gRPC errors into more user-friendly errors.
