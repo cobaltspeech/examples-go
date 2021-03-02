@@ -276,6 +276,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		})
 	}
 
+	// Display the results
 	for _, r := range lines {
 		prefix := ""
 		if cfg.Prefix {
