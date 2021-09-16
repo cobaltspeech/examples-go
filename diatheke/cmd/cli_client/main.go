@@ -94,6 +94,9 @@ func main() {
 		if err != nil {
 			fmt.Printf("error processing actions: %v\n", err)
 			break
+		} else if session == nil {
+			fmt.Printf("got nil session back")
+			break
 		}
 	}
 
@@ -118,6 +121,12 @@ func processActions(client *diatheke.Client, session *diathekepb.SessionOutput,
 		} else if cmd := action.GetCommand(); cmd != nil {
 			// The CommandAction will involve a session update.
 			return handleCommand(client, session, cmd)
+		} else if scribe := action.GetTranscribe(); scribe != nil {
+			// Transcribe actions do not require a session update.
+			err := handleTranscribe(scribe)
+			if err != nil {
+				return nil, err
+			}
 		} else if action.Action != nil {
 			return nil, fmt.Errorf("received unknown action type %T", action.Action)
 		}
@@ -174,6 +183,12 @@ func handleCommand(
 		err = fmt.Errorf("ProcessCommandResult error: %v", err)
 	}
 	return session, err
+}
+
+// handleTranscribe uses ASR to record a transcription from the user.
+func handleTranscribe(scribe *diathekepb.TranscribeAction) error {
+	fmt.Printf("  Transcribe: %+v\n", scribe)
+	return nil
 }
 
 // loadConfig reads the specified config file at application startup.
