@@ -1,4 +1,4 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2021) Cobalt Speech and Language Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/cobaltspeech/examples-go/diatheke/internal/audio"
 	"github.com/cobaltspeech/examples-go/diatheke/internal/config"
@@ -93,6 +94,9 @@ func main() {
 		if err != nil {
 			fmt.Printf("error processing actions: %v\n", err)
 			break
+		} else if session == nil {
+			fmt.Printf("got nil session back")
+			break
 		}
 	}
 
@@ -120,6 +124,12 @@ func processActions(client *diatheke.Client, session *diathekepb.SessionOutput,
 		} else if cmd := action.GetCommand(); cmd != nil {
 			// The CommandAction will involve a session update.
 			return handleCommand(client, session, cmd)
+		} else if scribe := action.GetTranscribe(); scribe != nil {
+			// Transcribe actions do not require a session update.
+			err := handleTranscribe(client, scribe)
+			if err != nil {
+				return nil, err
+			}
 		} else if action.Action != nil {
 			return nil, fmt.Errorf("received unknown action type %T", action.Action)
 		}
@@ -206,6 +216,50 @@ func handleReply(client *diatheke.Client, reply *diathekepb.ReplyAction) error {
 
 	// Stop the player
 	return player.Stop()
+}
+
+// handleTranscribe uses ASR to record a transcription from the user.
+func handleTranscribe(client *diatheke.Client, scribe *diathekepb.TranscribeAction) error {
+	// Create the transcription stream
+	stream, err := client.NewTranscribeStream(context.Background(), scribe)
+	if err != nil {
+		return err
+	}
+
+	// Create something to handle recording audio
+	recorder := audio.NewRecorder(appCfg.Recording)
+	if err = recorder.Start(); err != nil {
+		return err
+	}
+
+	fmt.Printf("Recording...\n")
+
+	var finalTranscription strings.Builder
+	handler := func(result *diathekepb.TranscribeResult) {
+		// Print the result on the same line (overwrite current
+		// contents). Note that this assumes that stdout is going
+		// to a terminal.
+		fmt.Printf("\r%s (confidence: %v)", result.Text, result.Confidence)
+
+		if result.IsPartial {
+			return
+		}
+
+		// As this is the final result (non-partial), go to
+		// the next line in preparation for the next result.
+		fmt.Printf("\n")
+
+		// Accumulate all non-partial transcriptions here.
+		finalTranscription.WriteString(result.Text)
+	}
+
+	err = diatheke.ReadTranscribeAudio(stream, recorder.Output(), 8192, handler)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("  Transcription: %v\n\n", finalTranscription.String())
+	return nil
 }
 
 // handleCommand executes the specified command.
