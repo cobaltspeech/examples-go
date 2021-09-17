@@ -37,11 +37,12 @@ fmt:
 lint-check: $(LINTER)
 	cd cubic && $(LINTER) run --deadline=2m
 	cd diatheke && $(LINTER) run --deadline=2m
+	cd cmdserver && $(LINTER) run --deadline=2m
 
 # Run tests
 .PHONY: test
 test: 
-	@echo Because this is just sample code, there are no tests, but Jenkins requires there to be a test target
+	cd cmdserver && go test -cover -race ./...
 
 # Build
 .PHONY: build-cubic-example

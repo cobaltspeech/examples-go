@@ -10,3 +10,10 @@ The [diatheke](./diatheke) folder contains two example clients that interact wit
 * [cli_client](./diatheke/cmd/cli_client) is a text only interface where the application processes text from the user, then gives a reply as text.
 
 See [here](./diatheke/README.md) for more details.
+
+## Diatheke Command Server
+The [cmdserver](./cmdserver) folder contains a go package that may be imported by other
+projects to create an http server that can handle command fulfillment if the Diatheke
+model supports sending commands to a webhook. See [here](./cmdserver/README.md) for
+more details.
+
