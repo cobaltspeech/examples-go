@@ -32,7 +32,7 @@ func (h *SomeHandler) fooCmd(input cmdserver.Params) (cmdserver.Params, error) {
 }
 
 func (h *SomeHandler) barCmd(input cmdserver.Params) (cmdserver.Params, error) {
-	// Do something interseting with the command input.
+	// Do something interesting with the command input.
 
 	// Create the output parameters
 	outParams := make(cmdserver.Params)
