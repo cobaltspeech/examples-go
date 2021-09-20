@@ -23,6 +23,9 @@ import (
 // includes some convenience functions for converting
 // to other types. To create a new Params object, use
 // the go standard make function (e.g., `make(Params)`).
+// Note that the convenience functions are not safe
+// to use concurrently (just as it is not safe to
+// access a regular map in Go concurrently).
 type Params map[string]string
 
 // AsString returns the parameter value for the given key
