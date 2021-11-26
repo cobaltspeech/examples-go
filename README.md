@@ -17,3 +17,4 @@ projects to create an http server that can handle command fulfillment if the Dia
 model supports sending commands to a webhook. See [here](./cmdserver/README.md) for
 more details.
 
+This is just a test of the webhook integration
