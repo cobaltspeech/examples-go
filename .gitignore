@@ -20,3 +20,4 @@ cubic/transcribe
 **/.DS_Store
 cubic/DemoCallCenterAudioTranscripts/*
 cubic/friendly/*
+.vscode
