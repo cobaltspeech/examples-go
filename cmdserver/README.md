@@ -26,19 +26,20 @@ type SomeHandler struct {
 	// Contains some data fields
 }
 
-func (h *SomeHandler) fooCmd(input cmdserver.Params) (cmdserver.Params, error) {
+func (h *SomeHandler) fooCmd(
+	in cmdserver.Input, out *cmdserver.Output) error {
 	// Do something interesting with the command input.
-	return nil, nil
+	return nil
 }
 
-func (h *SomeHandler) barCmd(input cmdserver.Params) (cmdserver.Params, error) {
+func (h *SomeHandler) barCmd(
+	in cmdserver.Input, out *cmdserver.Output) error {
 	// Do something interesting with the command input.
 
-	// Create the output parameters
-	outParams := make(cmdserver.Params)
-	outParams["expectedKey"] = "expectedVal"
+	// Set output parameters
+	out.Parameters["expectedKey"] = "expectedVal"
 
-	return outParams, nil
+	return nil
 }
 
 func main() {
@@ -47,8 +48,13 @@ func main() {
 
 	// Set handlers for command IDs
 	handler := SomeHandler{}
-	svr.SetHandler("foo", handler.fooCmd)
-	svr.SetHandler("bar", handler.barCmd)
+	svr.SetCommand("foo", handler.fooCmd)
+	svr.SetCommand("bar", handler.barCmd)
+
+	// It is also possible to set handlers based on model ID
+	// or model ID + command ID.
+	// svr.SetModel("modelID", handlerFunc)
+	// svr.SetModelCommand("modelID", "cmdID", handlerFunc)
 
 	// Run the server
 	if err := svr.Run(":24601"); err != nil {

@@ -1,4 +1,4 @@
-// Copyright (2021) Cobalt Speech and Language Inc.
+// Copyright (2021-present) Cobalt Speech and Language, Inc. All rights reserved.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,19 +28,14 @@ import (
 	"github.com/cobaltspeech/log"
 )
 
-// Handler is a function that takes a map of input parameters
-// and returns a (possibly empty or nil) map of output parameters,
-// as expected by a Diatheke command.
-type Handler func(Params) (Params, error)
-
 // Server represents an http server that handles Diatheke
 // commands. With this server, all commands go to the same
 // URL, so the Diatheke model should be set accordingly.
 // Once received, commands are sent to Handlers added with
 // the SetHandler function.
 type Server struct {
-	logger       log.Logger
-	handlerFuncs map[string]Handler
+	logger   log.Logger
+	registry handlerRegistry
 }
 
 // NewServer returns a new command server.
@@ -50,15 +45,51 @@ func NewServer(logger log.Logger) Server {
 	}
 
 	return Server{
-		logger:       logger,
-		handlerFuncs: make(map[string]Handler),
+		logger:   logger,
+		registry: newRegistry(),
 	}
 }
 
-// SetHandler registers the provided Handler to be called for
+// SetCommand registers the provided Handler to be called for
 // the specified command ID.
-func (svr *Server) SetHandler(cmdID string, h Handler) {
-	svr.handlerFuncs[cmdID] = h
+//
+// If there are multiple potential handlers for a command
+// registered (using SetCommand, SetModel, or SetModelCommand)
+// the server will attempt to use the most specific handler
+// available, with precedence shown below:
+//  1. Model+Command ID handler (most specific)
+//  2. Command ID handler
+//  3. Model ID handler (least specific)
+func (svr *Server) SetCommand(cmdID string, h Handler) {
+	svr.registry.setCmd(cmdID, h)
+}
+
+// SetModel registers the provided Handler to be called for
+// the specified model ID.
+//
+// If there are multiple potential handlers for a command
+// registered (using SetCommand, SetModel, or SetModelCommand)
+// the server will attempt to use the most specific handler
+// available, with precedence shown below:
+//  1. Model+Command ID handler (most specific)
+//  2. Command ID handler
+//  3. Model ID handler (least specific)
+func (svr *Server) SetModel(modelID string, h Handler) {
+	svr.registry.setModel(modelID, h)
+}
+
+// SetModelCommand registers the provided Handler to be called
+// for the given model and command ID combination.
+//
+// If there are multiple potential handlers for a command
+// registered (using SetCommand, SetModel, or SetModelCommand)
+// the server will attempt to use the most specific handler
+// available, with precedence shown below:
+//  1. Model+Command ID handler (most specific)
+//  2. Command ID handler
+//  3. Model ID handler (least specific)
+func (svr *Server) SetModelCommand(modelID, cmdID string, h Handler) {
+	svr.registry.setModelCmd(modelID, cmdID, h)
 }
 
 // Run starts the http server and listens at the given address
@@ -122,41 +153,41 @@ func (svr *Server) Run(address string) error {
 func (svr *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Read the JSON request
 	decoder := json.NewDecoder(r.Body)
-	var cmd cmdRequest
-	if err := decoder.Decode(&cmd); err != nil {
+	var input Input
+	if err := decoder.Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Find the appropriate handler
-	handler, found := svr.handlerFuncs[cmd.ID]
+	handler, found := svr.registry.findHandler(input)
 	if !found || handler == nil {
 		http.Error(
 			w,
-			fmt.Sprintf("could not find handler for command %q", cmd.ID),
+			fmt.Sprintf("could not find handler for command %q", input.CommandID),
 			http.StatusInternalServerError,
 		)
 		svr.logger.Error(
 			"msg", "could not find command handler",
-			"cmd", cmd.ID,
+			"cmd", input.CommandID,
 		)
 		return
 	}
 
 	// Run the command
-	outParams, err := handler(cmd.InputParameters)
-	result := cmdResponse{
-		ID:            cmd.ID,
-		OutParameters: outParams,
+	output := Output{
+		CommandID:  input.CommandID,
+		Parameters: make(Params),
 	}
+	err := handler(input, &output)
 	if err != nil {
-		result.Error = err.Error()
+		output.Error = err.Error()
 	}
 
 	// Send the command result
 	w.Header().Set("Content-Type", "application/json")
 	encoder := json.NewEncoder(w)
-	if err = encoder.Encode(&result); err != nil {
+	if err = encoder.Encode(&output); err != nil {
 		svr.logger.Error(
 			"msg", "failed to write command response",
 			"error", err,
@@ -164,13 +195,58 @@ func (svr *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type cmdRequest struct {
-	ID              string            `json:"id"`
-	InputParameters map[string]string `json:"inputParameters"`
+type cmdModelPair struct {
+	cmdID   string
+	modelID string
 }
 
-type cmdResponse struct {
-	ID            string            `json:"id"`
-	OutParameters map[string]string `json:"outParameters,omitempty"`
-	Error         string            `json:"error,omitempty"`
+type handlerRegistry struct {
+	cmdModelFuncs map[cmdModelPair]Handler
+	cmdFuncs      map[string]Handler
+	modelFuncs    map[string]Handler
+}
+
+func newRegistry() handlerRegistry {
+	return handlerRegistry{
+		cmdModelFuncs: make(map[cmdModelPair]Handler),
+		cmdFuncs:      make(map[string]Handler),
+		modelFuncs:    make(map[string]Handler),
+	}
+}
+
+func (hr *handlerRegistry) setCmd(cmdID string, h Handler) {
+	hr.cmdFuncs[cmdID] = h
+}
+
+func (hr *handlerRegistry) setModel(modelID string, h Handler) {
+	hr.modelFuncs[modelID] = h
+}
+
+func (hr *handlerRegistry) setModelCmd(modelID, cmdID string, h Handler) {
+	pair := cmdModelPair{
+		modelID: modelID,
+		cmdID:   cmdID,
+	}
+
+	hr.cmdModelFuncs[pair] = h
+}
+
+func (hr *handlerRegistry) findHandler(in Input) (Handler, bool) {
+	// Check our maps from specific to general.
+	pair := cmdModelPair{
+		cmdID:   in.CommandID,
+		modelID: in.ModelID,
+	}
+	handler, found := hr.cmdModelFuncs[pair]
+	if found {
+		return handler, true
+	}
+
+	handler, found = hr.cmdFuncs[in.CommandID]
+	if found {
+		return handler, true
+	}
+
+	handler, found = hr.modelFuncs[in.ModelID]
+	return handler, found
 }
