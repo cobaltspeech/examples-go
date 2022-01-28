@@ -178,6 +178,7 @@ func (svr *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	output := Output{
 		CommandID:  input.CommandID,
 		Parameters: make(Params),
+		Metadata:   input.Metadata,
 	}
 	err := handler(input, &output)
 	if err != nil {
