@@ -23,10 +23,10 @@ go build ./cmd/cli_client
 These examples are intended to be run from the command line, where they will accept either text or audio input.
 
 ```bash
-# Run the compiled text-based client
+# Run the compiled audio-based client
 ./bin/audio_client -config <path/to/config.toml>
 
-# Run the compiled audio-based client
+# Run the compiled text-based client
 ./bin/cli_client -config <path/to/config.toml>
 ```
 
