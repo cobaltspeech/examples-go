@@ -28,7 +28,8 @@ Prefix = true
 # for more details.
 [Server]
     # Specify the server address as "<url>:<port>"
-    Address = "demo.cobaltspeech.com:2727"
+    #Address = "demo.cobaltspeech.com:2727"
+    Address = "demo-transcribe-beta.cobaltspeech.com:443"
 
     # Set to true if the server is running without a
     # secure (TLS) connection (not recommended for
@@ -40,8 +41,9 @@ Prefix = true
     # on the server. A server may have multiple models available and the client
     # code may use other means to determine which one to call for a given file.  
     # For simplicity, this example just assumes configuring one model at a time.
-    #ModelID = "en-us-16-far"
-    ModelID = "en-us-8-close"
+    #ModelID = "en_US-16-FF"
+    ModelID = "en_US-16"
+    #ModelID = "en_US-8"
 
     # Idle Timeout of the created Recognizer. If no audio data is received by 
     # the recognizer for this duration, ongoing rpc calls will result in an error,
@@ -49,5 +51,4 @@ Prefix = true
     # same recognizer. The server may impose a limit on the maximum idle timeout
     # that can be specified, and if the value in this setting exceeds that serverside
     # value, calling StreamingRecognize will fail with an error.
-    IdleTimeout = 30
     GRPCTimeout = 3

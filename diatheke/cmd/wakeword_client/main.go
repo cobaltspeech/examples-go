@@ -22,8 +22,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/cobaltspeech/examples-go/diatheke/internal/audio"
 	"github.com/cobaltspeech/examples-go/diatheke/internal/config"
+	"github.com/cobaltspeech/examples-go/pkg/audio"
 	"github.com/cobaltspeech/sdk-cubic/grpc/go-cubic"
 	"github.com/cobaltspeech/sdk-cubic/grpc/go-cubic/cubicpb"
 	"github.com/cobaltspeech/sdk-diatheke/grpc/go-diatheke/v2"

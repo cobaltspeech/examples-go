@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/cobaltspeech/examples-go/pkg/audio"
 	"github.com/cobaltspeech/sdk-cubic/grpc/go-cubic/cubicpb"
 )
 
@@ -40,6 +41,7 @@ type Config struct {
 	Verbose     bool
 	Extension   string
 	CubicConfig *cubicpb.RecognitionConfig
+	Recording   audio.Config
 }
 
 // ReadConfigFile attempts to load the given config file

@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cobaltspeech/examples-go/diatheke/internal/audio"
 	"github.com/cobaltspeech/examples-go/diatheke/internal/config"
+	"github.com/cobaltspeech/examples-go/pkg/audio"
 	"github.com/cobaltspeech/sdk-diatheke/grpc/go-diatheke/v2"
 	"github.com/cobaltspeech/sdk-diatheke/grpc/go-diatheke/v2/diathekepb"
 )

@@ -1,12 +1,14 @@
 # Specify the Diatheke server connection 
 [Server]
     # Specify the server address as "<url>:<port>"
-    Address = "localhost:9002"
+    Address = "agvoice.cobaltspeech.com:443"
+    #Address = "agvoice.cobaltspeech.com:2727"
+    #Address = "localhost:9002"
 
     # Set to true if the server is running without a
     # secure (TLS) connection (not recommended for
     # production environments).
-    Insecure = true
+    Insecure = false
 
     # Specify the Diatheke model to use when creating new sessions.
     # This string should match one of the models defined in the Diatheke
@@ -56,4 +58,4 @@
 [Playback]
     # sox example (see http://sox.sourceforge.net/)
     Application = "sox"
-    Args = "-q -c 1 -r 16000 -b 16 -L -e signed -t raw - -d"
+    Args = "-q -c 1 -r 25600 -b 16 -L -e signed -t raw - -d"

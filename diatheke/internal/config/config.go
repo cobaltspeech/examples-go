@@ -20,7 +20,7 @@ import (
 	"os/exec"
 
 	"github.com/BurntSushi/toml"
-	"github.com/cobaltspeech/examples-go/diatheke/internal/audio"
+	"github.com/cobaltspeech/examples-go/pkg/audio"
 )
 
 // ServerConfig contains the Diatheke server settings
