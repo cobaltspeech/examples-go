@@ -125,10 +125,13 @@ func main() {
 					// For simplicity, this example just uses a few of the available properties.
 					// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
 					// for a description of what other information is available.
-					if !r.IsPartial && len(r.Alternatives) > 0 {
+					if len(r.Alternatives) > 0 {
 						line := r.Alternatives[0].Transcript
-						fmt.Println(line)
-						fmt.Fprintln(w, line)
+						fmt.Printf("\r%s", line)
+						if !r.IsPartial {
+							fmt.Println()
+							fmt.Fprintln(w, line)
+						}
 					}
 				}
 			})
