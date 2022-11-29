@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cobaltspeech/examples-go/cobalt-transcribe/v5/internal/config"
+	"github.com/cobaltspeech/examples-go/cobalt-transcribe/config"
 	"github.com/cobaltspeech/examples-go/pkg/audio"
 	"github.com/cobaltspeech/log"
 	"github.com/cobaltspeech/log/pkg/level"
@@ -55,8 +55,7 @@ Usage: transcribe -config sample.config.toml -input /path/to/audio/files -output
 func main() {
 	logger := log.NewLeveledLogger()
 	configFile := flag.String("config", "", "path to config file")
-	inputDir := flag.String("input", "", "path to folder containing audio files")
-	outputDir := flag.String("output", "", "optional path to folder to which transcript files will be written")
+	output := flag.String("output", "", "filepath to which transcript file will be appended")
 	flag.Usage = func() {
 		fmt.Println(longMsg)
 		fmt.Println("Flags:")
@@ -88,6 +87,16 @@ func main() {
 	cfg.CubicConfig = cubicConfig
 	logger.Info("CubicConfig", cfg.CubicConfig)
 
+	if *output == "" {
+		fmt.Printf("Please specify -output\n")
+		return
+	}
+	w, err := getOutputWriter(*output)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	// Set up a cubicsvr client
 	client, err := createClient(cfg)
 	if err != nil {
@@ -102,36 +111,23 @@ func main() {
 		return nil, err
 	}
 
-	// Load the files and place them in a channel
-	files, err := loadFiles(*inputDir, *outputDir, cfg.Extension, logger)
-	if err != nil {
-		logger.Error("msg", "Error loading files", "err", err)
-		return
-	}
-	fileCount := len(files)
-	var numWorkers int
-	if fileCount < cfg.NumWorkers {
-		numWorkers = fileCount
-	} else {
-		numWorkers = cfg.NumWorkers
-	}
-	logger.Info("msg", "Processing files", "server", cfg.Server.Address, "fileCount", fileCount, "numWorkers", numWorkers)
+	err = client.StreamingRecognize(context.Background(),
+		cfg.CubicConfig,
+		recorder.Output(), // The audio file to send
+		func(response *cubicpb.RecognitionResponse) { // The callback for results
+			for _, r := range response.Results {
+				// Note: The Results object includes a lot of detail about the ASR output.
+				// For simplicity, this example just uses a few of the available properties.
+				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
+				// for a description of what other information is available.
+				if !r.IsPartial && len(r.Alternatives) > 0 {
+					line := r.Alternatives[0].Transcript
+					fmt.Println(line)
+					fmt.Fprintln(w, line)
+				}
+			}
+		})
 
-	// Setup channel for communicating between the various goroutines
-	fileChannel := make(chan fileRef, numWorkers)
-
-	// Start multiple goroutines.  The first pushes to the fileChannel, and the rest
-	// each pull from the fileChannel and send requests to cubic server.
-	wg := &sync.WaitGroup{}
-	wg.Add(numWorkers + 1)
-	go feedInputFiles(fileChannel, files, wg, logger)
-
-	logger.Debug("msg", "Starting workers.", "numWorkers", numWorkers)
-	for i := 0; i < numWorkers; i++ {
-		go transcribeFiles(i, cfg, wg, client, fileChannel, logger)
-	}
-
-	wg.Wait() // Wait for all workers to finish
 }
 
 // createClient instantiates the Client from the Cubic SDK to communicate with the server
