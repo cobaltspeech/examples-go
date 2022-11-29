@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cobaltspeech/examples-go/cobalt-transcribe/config"
+	"github.com/cobaltspeech/examples-go/cobalt-transcribe/internal/config"
 	"github.com/cobaltspeech/examples-go/pkg/audio"
 	"github.com/cobaltspeech/log"
 	"github.com/cobaltspeech/log/pkg/level"
