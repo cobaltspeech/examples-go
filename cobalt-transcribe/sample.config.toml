@@ -1,0 +1,32 @@
+
+# Include debugging information in the output
+Verbose = true
+
+# Specify the Cubic server connection.  This is a subset of the available
+# options the client can specify to the server.  See 
+# https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionconfig
+# for more details.
+[Server]
+    # Specify the server address as "<url>:<port>"
+    #Address = "demo.cobaltspeech.com:2727"
+    Address = "demo-transcribe-beta.cobaltspeech.com:443"
+
+    # Set to true if the server is running without a
+    # secure (TLS) connection (not recommended for
+    # production environments).
+    Insecure = false
+
+    # Specify the cubic model to use for the transcriptions.
+    # This string should match one of the models defined in cubicsvr.cfg.toml
+    # on the server. A server may have multiple models available and the client
+    # code may use other means to determine which one to call for a given file.  
+    # For simplicity, this example just assumes configuring one model at a time.
+    #ModelID = "en_US-16-FF"
+    ModelID = "en-US"
+
+
+# The recording app should output data to stdout
+[Recording]
+    # sox example (see http://sox.sourceforge.net/)
+    Application = "sox"
+    Args = "-q -d -c 1 -r 16000 -b 16 -L -e signed -t raw -"

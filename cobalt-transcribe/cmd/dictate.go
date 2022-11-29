@@ -20,19 +20,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/cobaltspeech/examples-go/cobalt-transcribe/internal/config"
+
 	"github.com/cobaltspeech/examples-go/pkg/audio"
 	"github.com/cobaltspeech/log"
 	"github.com/cobaltspeech/log/pkg/level"
 	cubic "github.com/cobaltspeech/sdk-cubic/grpc/go-cubic"
 	"github.com/cobaltspeech/sdk-cubic/grpc/go-cubic/cubicpb"
-	pbduration "google.golang.org/protobuf/types/known/durationpb"
 )
 
 type fileRef struct {
@@ -41,13 +37,7 @@ type fileRef struct {
 }
 
 var longMsg = `
-This command is used for transcribing audio files.
-It will iterate through the specified directory of audio files and write the transcript
-back either to the same directory or --output directory.  The file name for the transcript
-will be the same name as the input audio file, with the extension .txt.
-
-If the server supports transcoding, the file extension (wav, flac, mp3, vox, raw (PCM16SLE)) 
-will be used to determine which codec to use.  Use WAV or FLAC for best results.
+This command is used for transcribing input from the microphone
 
 Usage: transcribe -config sample.config.toml -input /path/to/audio/files -output /path/where/transcripts/will/be/written
 `
@@ -93,7 +83,7 @@ func main() {
 	}
 	w, err := getOutputWriter(*output)
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("msg", "error getting output writer", "err", err)
 		return
 	}
 
@@ -104,29 +94,45 @@ func main() {
 		return
 	}
 	defer client.Close()
+	modelList, err := client.ListModels(context.Background())
+	if err != nil {
+		logger.Error("msg", "error listing models", "err", err)
+		return
+	}
+	fmt.Printf("Available Models:\n")
+	for _, mdl := range modelList.Models {
+		fmt.Printf("  ID: %v\n", mdl.Id)
+		fmt.Printf("    Name: %v\n", mdl.Name)
+	}
 
 	// Create something to handle recording audio
 	recorder := audio.NewRecorder(cfg.Recording)
 	if err = recorder.Start(); err != nil {
-		return nil, err
+		fmt.Println(err)
+		return
 	}
+	defer recorder.Stop()
+	fmt.Println("recording...")
+	for {
+		// Run until Ctrl-C
 
-	err = client.StreamingRecognize(context.Background(),
-		cfg.CubicConfig,
-		recorder.Output(), // The audio file to send
-		func(response *cubicpb.RecognitionResponse) { // The callback for results
-			for _, r := range response.Results {
-				// Note: The Results object includes a lot of detail about the ASR output.
-				// For simplicity, this example just uses a few of the available properties.
-				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
-				// for a description of what other information is available.
-				if !r.IsPartial && len(r.Alternatives) > 0 {
-					line := r.Alternatives[0].Transcript
-					fmt.Println(line)
-					fmt.Fprintln(w, line)
+		err = client.StreamingRecognize(context.Background(),
+			cfg.CubicConfig,
+			recorder.Output(), // The output stream
+			func(response *cubicpb.RecognitionResponse) { // The callback for results
+				for _, r := range response.Results {
+					// Note: The Results object includes a lot of detail about the ASR output.
+					// For simplicity, this example just uses a few of the available properties.
+					// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
+					// for a description of what other information is available.
+					if !r.IsPartial && len(r.Alternatives) > 0 {
+						line := r.Alternatives[0].Transcript
+						fmt.Println(line)
+						fmt.Fprintln(w, line)
+					}
 				}
-			}
-		})
+			})
+	}
 
 }
 
@@ -169,140 +175,6 @@ func checkDir(dir, desc string) error {
 		return fmt.Errorf("%s dir %s is not a directory", desc, dir)
 	}
 	return nil
-}
-
-// loadFiles walks through all the files in inputDir that end in extension and adds them to a list for processing
-func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]fileRef, error) {
-	if err := checkDir(inputDir, "input"); err != nil {
-		return nil, err
-	}
-	if outputDir == "" {
-		outputDir = inputDir
-	} else if err := checkDir(outputDir, "output"); err != nil {
-		return nil, err
-	}
-	files := make([]fileRef, 0)
-	err := filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
-		// files, outputDir, and extension are available as closures
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() || info.IsDir() || filepath.Ext(path) != extension {
-			return nil
-		}
-
-		outputPath := filepath.Join(outputDir, filepath.Base(path))
-		files = append(files, fileRef{
-			audioPath:  path,
-			outputPath: outputPath + ".txt",
-		})
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
-}
-
-// feedInputFiles iterates through a list of files and pushes the reference into a fileChannel.
-func feedInputFiles(fileChannel chan<- fileRef, files []fileRef, wg *sync.WaitGroup, logger log.Logger) {
-	for _, f := range files {
-		fileChannel <- f
-	}
-	logger.Info("msg", "Done feeding audio files.")
-	wg.Done()
-	close(fileChannel)
-}
-
-// transcribeFiles pulls references from the file channel and sends them for transcription
-// until the channel is empty
-func transcribeFiles(workerID int, cfg config.Config, wg *sync.WaitGroup, client *cubic.Client,
-	fileChannel <-chan fileRef, logger log.Logger) {
-	logger.Debug("Worker starting", workerID)
-	for input := range fileChannel {
-		transcribeFile(input, workerID, cfg, client, logger)
-	}
-	wg.Done()
-}
-
-// transcribeFile streams the contents of a single audio file to the Cubic server and writes
-// the transcript to the output file
-func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubic.Client, logger log.Logger) {
-	audio, err := os.Open(input.audioPath)
-	if err != nil {
-		logger.Error("file", input.audioPath, "err", err, "message", "Couldn't open audio file")
-		return
-	}
-	defer audio.Close()
-
-	w, err := getOutputWriter(input.outputPath)
-	if err != nil {
-		logger.Error("file", input.outputPath, "err", err, "message", "Couldn't open output file writer")
-	}
-	defer w.Close()
-
-	// Counter for segments
-	segmentID := 0
-
-	var lines []*cubicpb.RecognitionResult
-	// Send the Streaming Recognize config
-	err = client.StreamingRecognize(context.Background(),
-		cfg.CubicConfig,
-		audio, // The audio file to send
-		func(response *cubicpb.RecognitionResponse) { // The callback for results
-			logger.Debug("workerID", workerID, "file", input.audioPath, "segmentID", segmentID)
-			for _, r := range response.Results {
-				// Note: The Results object includes a lot of detail about the ASR output.
-				// For simplicity, this example just uses a few of the available properties.
-				// See https://cobaltspeech.github.io/sdk-cubic/protobuf/autogen-doc-cubic-proto/#message-recognitionalternative
-				// for a description of what other information is available.
-				if !r.IsPartial && len(r.Alternatives) > 0 {
-					lines = append(lines, r)
-				}
-			}
-			segmentID++
-		})
-
-	if err != nil {
-		logger.Error("file", input.audioPath, "err", simplifyGrpcErrors(cfg, err))
-	}
-
-	if len(cfg.Channels) > 1 {
-		// While CubicSvr guarantees that the results are in order
-		// chronologicaly _per channel_, there is no such promise made about the
-		// relationship between channels. Therefore, if we have multiple channels,
-		// sort by startTime (results.Alternatives[0].StartTime).
-		// If start times are the same, maintain the original order.
-
-		sort.Slice(lines, func(i, j int) bool {
-			return formatDuration(lines[i].Alternatives[0].GetStartTime()) < formatDuration(lines[j].Alternatives[0].GetStartTime())
-		})
-	}
-
-	// Display the results
-	for _, r := range lines {
-		prefix := ""
-		if cfg.Prefix {
-			prefix = fmt.Sprintf("[Channel %d - %s] ", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()))
-		}
-		_, innerErr := fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
-		if innerErr != nil {
-			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append transcript")
-		}
-		_, innerErr = fmt.Fprintln(w, "")
-		if innerErr != nil {
-			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append newline")
-		}
-	}
-}
-
-// formatDuration converts a pbduration.Duration to a time.Duration
-// so its string representation is more nicely formatted. Don't worry about overflow since
-// it's unlikely that the timestamp in a file would be more than 290 years!
-func formatDuration(x *pbduration.Duration) time.Duration {
-	d := time.Duration(x.GetSeconds()) * time.Second
-	d += time.Duration(x.GetNanos()) * time.Nanosecond
-	return d
 }
 
 // simplifyGrpcErrors converts semi-cryptic gRPC errors into more user-friendly errors.
