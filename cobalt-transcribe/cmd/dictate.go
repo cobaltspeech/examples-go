@@ -135,6 +135,10 @@ func main() {
 					}
 				}
 			})
+		if err != nil {
+			logger.Error("msg", "error in StreamingRecognize", "err", err)
+			return
+		}
 	}
 
 }
