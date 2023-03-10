@@ -3,12 +3,12 @@
 # Needed tools
 BINDIR := $(CURDIR)/tmp/bin
 LINTER := $(BINDIR)/golangci-lint
-LINTER_VERSION := 1.27.0
+LINTER_VERSION := 1.51.0
 
 # Linux vs Darwin detection for the machine on which the build is taking place (not to be used for the build target)
 DEV_OS := $(shell uname -s | tr A-Z a-z)
 
-build: build-cubic-example build-diatheke-example
+build: build-cubic-example build-diatheke-example build-cobalt-transcribe
 
 $(LINTER):
 	mkdir -p $(BINDIR)
@@ -38,6 +38,7 @@ lint-check: $(LINTER)
 	cd cubic && $(LINTER) run --deadline=2m
 	cd diatheke && $(LINTER) run --deadline=2m
 	cd cmdserver && $(LINTER) run --deadline=2m
+	cd cobalt-transcribe && $(LINTER) run --deadline=2m
 
 # Run tests
 .PHONY: test
@@ -48,6 +49,10 @@ test:
 .PHONY: build-cubic-example
 build-cubic-example:
 	cd cubic && go mod tidy && go build -o ./bin/transcribe ./cmd
+
+.PHONY: build-cobalt-transcribe
+build-cobalt-transcribe:
+	cd cobalt-transcribe && go mod tidy && go build -o ./bin/cobalt-transcribe .
 
 .PHONY: build-diatheke-example
 build-diatheke-example:
