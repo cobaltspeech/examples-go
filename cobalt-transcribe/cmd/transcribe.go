@@ -20,7 +20,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cobaltspeech/cubicsvr/tetracubic/v5/api"
+	cubicpb "github.com/cobaltspeech/go-genproto/cobaltspeech/cubic/v5"
+
 	"github.com/cobaltspeech/examples-go/cobalt-transcribe/internal/client"
 	"github.com/cobaltspeech/log"
 	"github.com/spf13/cobra"
@@ -72,11 +73,11 @@ func transcribe(c *client.Client, wavFn, outputFn string, logger log.Logger) err
 	defer audio.Close()
 
 	err = c.StreamingRecognize(context.Background(),
-		api.RecognitionConfig{ModelID: cConf.Server.ModelID},
+		cubicpb.RecognitionConfig{ModelId: cConf.Server.ModelID},
 		audio,
-		func(response api.RecognitionResponse) { // The callback for results
+		func(response *cubicpb.StreamingRecognizeResponse) { // The callback for results
 			if !response.Result.IsPartial && len(response.Result.Alternatives) > 0 {
-				err = writeTranscript(outputFn, response)
+				err = writeTranscript(outputFn, *response)
 
 				if err != nil {
 					logger.Error("error", "error writing transcript", "msg", err)
@@ -92,7 +93,7 @@ func transcribe(c *client.Client, wavFn, outputFn string, logger log.Logger) err
 	return err
 }
 
-func writeTranscript(path string, response api.RecognitionResponse) error {
+func writeTranscript(path string, response cubicpb.StreamingRecognizeResponse) error {
 	var enc *json.Encoder
 
 	if path == "" {

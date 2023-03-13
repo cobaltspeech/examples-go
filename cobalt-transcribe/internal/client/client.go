@@ -11,19 +11,14 @@ import (
 	"io"
 	"sync"
 
-	"github.com/cobaltspeech/cubicsvr/tetracubic/v5/api"
-	"github.com/cobaltspeech/cubicsvr/v5/pkg/apiconv/v5"
 	"github.com/cobaltspeech/log"
 
 	"google.golang.org/grpc"
 
-	tcClient "github.com/cobaltspeech/cubicsvr/tetracubic/v5/client"
 	cubicpb "github.com/cobaltspeech/go-genproto/cobaltspeech/cubic/v5"
 )
 
 const defaultStreamingBufsize uint32 = 1024
-
-var _ tcClient.Client = (*Client)(nil) // verify at compile time that Client implements tetracubic/client.Client
 
 type Client struct {
 	cubic            cubicpb.CubicServiceClient
@@ -96,19 +91,27 @@ func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
 	return v.Version, nil
 }
 
-func (c *Client) ListModels(ctx context.Context) ([]api.Model, error) {
+// TODO (cenk) : implement the list models
+func (c *Client) ListModels(ctx context.Context) ([]*cubicpb.Model, error) {
 	resp, err := c.cubic.ListModels(ctx, &cubicpb.ListModelsRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	return apiconv.ModelListFromProto(resp.Models), nil
+	return resp.Models, nil
 }
 
+// RecognitionResponseHandler is a type of callback function that will be called
+// when the `StreamingRecognize` method is running.  For each response received
+// from cubic server, this method will be called once.  The provided
+// RecognitionResponse is guaranteed to be non-nil.  Since this function is
+// executed as part of the streaming process, it should preferably return
+// quickly and certainly not block.
+type RecognitionResponseHandler func(*cubicpb.StreamingRecognizeResponse)
+
 func (c *Client) StreamingRecognize(ctx context.Context,
-	cfg api.RecognitionConfig, //nolint:gocritic // cfg is a large struct but we want to use a copy
-	audio io.Reader, handler api.ResultHandlerFunc) error {
-	cfgpb := apiconv.RecognitionConfigToProto(cfg)
+	cfg cubicpb.RecognitionConfig, //nolint:gocritic // cfg is a large struct but we want to use a copy
+	audio io.Reader, handler RecognitionResponseHandler) error {
 
 	var handlerErr error
 
@@ -117,13 +120,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 			return
 		}
 
-		result, err := apiconv.StreamingRecognizeResponseFromProto(resp)
-		if err != nil {
-			handlerErr = err
-			return
-		}
-
-		handler(result)
+		handler(resp)
 	}
 
 	stream, err := c.cubic.StreamingRecognize(ctx)
@@ -146,7 +143,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 	wg.Add(1)
 
 	go func() {
-		if err := sendaudio(stream, cfgpb, audio, c.streamingBufSize); err != nil && err != io.EOF {
+		if err := sendaudio(stream, &cfg, audio, c.streamingBufSize); err != nil && err != io.EOF {
 			// if sendaudio encountered io.EOF, it's only a
 			// notification that the stream has closed.  The actual
 			// status will be obtained in a subsequent Recv call, in
@@ -237,8 +234,9 @@ func sendaudio(stream cubicpb.CubicService_StreamingRecognizeClient,
 	}
 }
 
+// TODO (cenk) : implement compile context
 func (c *Client) CompileContext(ctx context.Context,
-	modelID, token string, phrases []api.ContextPhrase) (api.CompiledContext, error) {
+	modelID, token string, phrases []cubicpb.ContextPhrase) (cubicpb.CompiledContext, error) {
 	phraseList := make([]*cubicpb.ContextPhrase, len(phrases))
 
 	for i, v := range phrases {
@@ -254,10 +252,10 @@ func (c *Client) CompileContext(ctx context.Context,
 		Phrases: phraseList,
 	})
 	if err != nil {
-		return api.CompiledContext{}, err
+		return cubicpb.CompiledContext{}, err
 	}
 
-	return apiconv.CompiledContextFromProto(compiled.Context), nil
+	return *compiled.Context, nil
 }
 
 func (c *Client) Close() error {

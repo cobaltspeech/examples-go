@@ -5,8 +5,6 @@ go 1.19
 replace github.com/cobaltspeech/cubicsvr/v5 => ../../cubicsvr
 
 require (
-	github.com/cobaltspeech/cubicsvr/tetracubic/v5 v5.0.0-20230224051945-9abd0eb47fc4
-	github.com/cobaltspeech/cubicsvr/v5 v5.0.0-00010101000000-000000000000
 	github.com/cobaltspeech/go-genproto v0.0.0-20230228070040-8b182b61673b
 	github.com/cobaltspeech/log v0.1.12
 	github.com/pelletier/go-toml/v2 v2.0.6
