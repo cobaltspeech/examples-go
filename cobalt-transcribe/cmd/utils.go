@@ -37,9 +37,8 @@ func addGlobalFlagsCheck(toWrap cobra.PositionalArgs) cobra.PositionalArgs {
 }
 
 func addGlobalFlags(flags *pflag.FlagSet) {
-
 	// read configuration variables
-	flags.StringVar(&confFn, "config", "", "configuration filename")
+	flags.StringVar(&confFn, "config", "", "configuration file (.toml) for cubic server")
 	flags.StringVar(&cConf.Server.Address, "server", "127.0.0.1:2729", "cubicsvr GRPC server address.")
 	flags.DurationVar(&cConf.Server.IdleTimeout, "timeout",
 		5000*time.Millisecond, "timeout to wait for (milliseconds)") //nolint: gomnd // 5 seconds is a fine default
@@ -60,7 +59,6 @@ func runFunc(f func(args []string) error) func(*cobra.Command, []string) {
 // ServerURL from addGlobalFlags.
 func runClientFunc(f func(*client.Client, []string) error) func(*cobra.Command, []string) {
 	return runFunc(func(args []string) error {
-
 		// read config file if specified
 		if confFn != "" {
 			inF, err := os.Open(confFn)

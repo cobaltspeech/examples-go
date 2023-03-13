@@ -39,7 +39,7 @@ func version(c *client.Client) error {
 		return fmt.Errorf("error while getting version: %w", err)
 	}
 
-	fmt.Printf("Cubic engine version is %s\n", v)
+	fmt.Printf("Cubic transcribe %s\n", v)
 
 	return nil
 }

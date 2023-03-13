@@ -42,9 +42,9 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "cubic-cli",
-	Short: "cubic-cli is a command line interface for interacting with a running instance of cubicsvr",
-	Long:  `cubic-cli is a command line interface for interacting with a running instance of cubicsvr`,
+	Use:   "transcribe",
+	Short: "transcribe is a command line interface for interacting with a running instance of cubicsvr",
+	Long:  `transcribe is a command line interface for interacting with a running instance of cubicsvr`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

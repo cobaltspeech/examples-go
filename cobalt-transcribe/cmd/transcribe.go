@@ -34,7 +34,7 @@ func buildTransribeCmd() *cobra.Command {
 	)
 
 	var cmd = &cobra.Command{
-		Use:   "transcribe",
+		Use:   "file",
 		Short: "Transcribe wav file.",
 		Args:  addGlobalFlagsCheck(cobra.NoArgs),
 		Run: runClientFunc(func(c *client.Client, args []string) error {
@@ -78,7 +78,6 @@ func transcribe(c *client.Client, wavFn, outputFn string, logger log.Logger) err
 		func(response *cubicpb.StreamingRecognizeResponse) { // The callback for results
 			if !response.Result.IsPartial && len(response.Result.Alternatives) > 0 {
 				err = writeTranscript(outputFn, *response)
-
 				if err != nil {
 					logger.Error("error", "error writing transcript", "msg", err)
 					os.Exit(1)

@@ -52,7 +52,7 @@ build-cubic-example:
 
 .PHONY: build-cobalt-transcribe
 build-cobalt-transcribe:
-	cd cobalt-transcribe && go mod tidy && go build -o ./bin/cobalt-transcribe .
+	cd cobalt-transcribe && go mod tidy && go build -o ./bin/transcribe .
 
 .PHONY: build-diatheke-example
 build-diatheke-example:
