@@ -22,25 +22,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Fetch version of transcribe-server.",
+var listModelsCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List models available in transcribe server.",
 	Args:  addGlobalFlagsCheck(cobra.NoArgs),
 	Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
 
-		err := version(ctx, c)
+		err := listModels(ctx, c)
 
 		return err
 	}),
 }
 
-func version(ctx context.Context, c *client.Client) error {
-	v, err := c.CobaltVersions(context.Background())
+func listModels(ctx context.Context, c *client.Client) error {
+
+	v, err := c.ListModels(ctx)
 	if err != nil {
-		return fmt.Errorf("error while getting version: %w", err)
+		return fmt.Errorf("error while getting the list of models: %w", err)
 	}
 
-	fmt.Printf("Transcribe server %s\n", v)
+	fmt.Printf("%s\n", v)
 
 	return nil
 }

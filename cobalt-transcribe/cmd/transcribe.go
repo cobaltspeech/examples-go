@@ -19,8 +19,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
-	cubicpb "github.com/cobaltspeech/go-genproto/cobaltspeech/cubic/v5"
+	transcribepb "github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5"
 
 	"github.com/cobaltspeech/examples-go/cobalt-transcribe/internal/client"
 	"github.com/cobaltspeech/log"
@@ -28,20 +29,18 @@ import (
 )
 
 func buildTransribeCmd() *cobra.Command {
-	var (
-		wavFn    string
-		outputFn string
-	)
+	var outputFn string
 
 	var cmd = &cobra.Command{
-		Use:   "file",
-		Short: "Transcribe wav file.",
-		Args:  addGlobalFlagsCheck(cobra.NoArgs),
-		Run: runClientFunc(func(c *client.Client, args []string) error {
+		Use:   "recognize <audio file>",
+		Short: "Transcribe an audio file.",
+		Args:  addGlobalFlagsCheck(cobra.ExactArgs(1)),
+		Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
 
 			logger := log.NewLeveledLogger()
 
-			err := transcribe(c, wavFn, outputFn, logger)
+			// args[0] is the audio file
+			err := transcribe(ctx, logger, c, args[0], outputFn)
 			if err != nil {
 				return err
 			}
@@ -50,20 +49,13 @@ func buildTransribeCmd() *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().StringVar(&wavFn, "input", "", "Path to input audio file (required)")
-	cmd.Flags().StringVar(&outputFn, "output", "", "Path to output json file")
-	cmd.Flags().StringVar(&cConf.Server.ModelID, "model", "1", "Model ID")
-
-	err := cmd.MarkFlagRequired("input")
-	if err != nil {
-		fmt.Println("cannot read the commandline arguments: ", err)
-		os.Exit(1)
-	}
+	cmd.Flags().StringVar(&outputFn, "output-json", "", "Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
+	cmd.Flags().StringVar(&recoConfigStr, "recognition-config", "{}", "Json string to configure recognition. See https://pkg.go.dev/github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5#RecognitionConfig for details")
 
 	return cmd
 }
 
-func transcribe(c *client.Client, wavFn, outputFn string, logger log.Logger) error {
+func transcribe(ctx context.Context, logger log.Logger, c *client.Client, wavFn, outputFn string) error {
 	var err error
 
 	audio, err := os.Open(wavFn)
@@ -72,31 +64,64 @@ func transcribe(c *client.Client, wavFn, outputFn string, logger log.Logger) err
 	}
 	defer audio.Close()
 
-	err = c.StreamingRecognize(context.Background(),
-		cubicpb.RecognitionConfig{ModelId: cConf.Server.ModelID},
-		audio,
-		func(response *cubicpb.StreamingRecognizeResponse) { // The callback for results
-			if !response.Result.IsPartial && len(response.Result.Alternatives) > 0 {
-				err = writeTranscript(outputFn, *response)
-				if err != nil {
-					logger.Error("error", "error writing transcript", "msg", err)
-					os.Exit(1)
-				}
-			}
-		})
+	var resp []transcribepb.StreamingRecognizeResponse
+
+	// The callback for results
+	callBackFunc := func(response *transcribepb.StreamingRecognizeResponse) {
+		if response.Error != nil {
+			logger.Info("msg", response.Error.Message)
+			return
+		}
+
+		if !response.Result.IsPartial && len(response.Result.Alternatives) > 0 {
+			resp = append(resp, *response) //nolint:govet // it is okay to copy
+		}
+	}
+
+	// read the recoConf from the config string
+	var recoConfig transcribepb.RecognitionConfig
+
+	decoder := json.NewDecoder(strings.NewReader(recoConfigStr))
+	decoder.DisallowUnknownFields()
+	err = decoder.Decode(&recoConfig)
+	if err != nil {
+		return fmt.Errorf("error decoding the recognition config %w", err)
+	}
+
+	// use the default (first available) model if model is not specified
+	if recoConfig.ModelId == "" {
+		v, err := c.ListModels(ctx)
+		if err != nil {
+			return fmt.Errorf("error while getting the list of models: %w", err)
+		}
+
+		recoConfig.ModelId = v[0].Id
+	}
+
+	err = c.StreamingRecognize(ctx, recoConfig, audio, callBackFunc) //nolint:govet // it is okay to copy
 
 	if err != nil {
 		return fmt.Errorf("error during recognition %s %w", wavFn, simplifyGrpcErrors(err))
 	}
 
-	return err
+	err = writeTranscript(outputFn, resp)
+
+	if err != nil {
+		logger.Error("error", "error writing transcript", "msg", err)
+		os.Exit(1)
+	}
+
+	return nil
 }
 
-func writeTranscript(path string, response cubicpb.StreamingRecognizeResponse) error {
+func writeTranscript(path string, response []transcribepb.StreamingRecognizeResponse) error {
 	var enc *json.Encoder
 
 	if path == "" {
-		fmt.Fprintln(os.Stdout, response.Result.Alternatives[0].TranscriptFormatted)
+		for i := 0; i < len(response); i++ {
+			fmt.Fprintln(os.Stdout, response[i].Result.Alternatives[0].TranscriptFormatted)
+		}
+
 		return nil
 	} else {
 		outF, err := os.Create(path)

@@ -1,8 +1,5 @@
 // Copyright (2020) Cobalt Speech and Language Inc.
 
-// Package client wraps the sdk-cubic client and implements the interface
-// tetracubic/client.Client that can use grpc to receive results from cubicsvr
-// rather than directly from tetracubic.Tetracubic.
 package client
 
 import (
@@ -15,13 +12,13 @@ import (
 
 	"google.golang.org/grpc"
 
-	cubicpb "github.com/cobaltspeech/go-genproto/cobaltspeech/cubic/v5"
+	transcribepb "github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5"
 )
 
 const defaultStreamingBufsize uint32 = 1024
 
 type Client struct {
-	cubic            cubicpb.CubicServiceClient
+	transcribe       transcribepb.TranscribeServiceClient
 	conn             *grpc.ClientConn
 	log              log.Logger
 	streamingBufSize uint32
@@ -44,7 +41,7 @@ func NewClient(conn *grpc.ClientConn, opts ...Option) (*Client, error) {
 	}
 
 	return &Client{
-		cubic:            cubicpb.NewCubicServiceClient(conn),
+		transcribe:       transcribepb.NewTranscribeServiceClient(conn),
 		conn:             conn,
 		streamingBufSize: args.streamingBufSize,
 		log:              args.log,
@@ -83,7 +80,7 @@ func WithLogger(logger log.Logger) Option {
 }
 
 func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
-	v, err := c.cubic.Version(ctx, &cubicpb.VersionRequest{})
+	v, err := c.transcribe.Version(ctx, &transcribepb.VersionRequest{})
 	if err != nil {
 		return "", err
 	}
@@ -91,9 +88,8 @@ func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
 	return v.Version, nil
 }
 
-// TODO (cenk) : implement the list models
-func (c *Client) ListModels(ctx context.Context) ([]*cubicpb.Model, error) {
-	resp, err := c.cubic.ListModels(ctx, &cubicpb.ListModelsRequest{})
+func (c *Client) ListModels(ctx context.Context) ([]*transcribepb.Model, error) {
+	resp, err := c.transcribe.ListModels(ctx, &transcribepb.ListModelsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -103,19 +99,19 @@ func (c *Client) ListModels(ctx context.Context) ([]*cubicpb.Model, error) {
 
 // RecognitionResponseHandler is a type of callback function that will be called
 // when the `StreamingRecognize` method is running.  For each response received
-// from cubic server, this method will be called once.  The provided
+// from transcribe server, this method will be called once.  The provided
 // RecognitionResponse is guaranteed to be non-nil.  Since this function is
 // executed as part of the streaming process, it should preferably return
 // quickly and certainly not block.
-type RecognitionResponseHandler func(*cubicpb.StreamingRecognizeResponse)
+type RecognitionResponseHandler func(*transcribepb.StreamingRecognizeResponse)
 
 func (c *Client) StreamingRecognize(ctx context.Context,
-	cfg cubicpb.RecognitionConfig, //nolint:gocritic // cfg is a large struct but we want to use a copy
+	cfg transcribepb.RecognitionConfig, //nolint:govet // cfg is a large struct but we want to use a copy
 	audio io.Reader, handler RecognitionResponseHandler) error {
 
 	var handlerErr error
 
-	handlerpb := func(resp *cubicpb.StreamingRecognizeResponse) {
+	handlerpb := func(resp *transcribepb.StreamingRecognizeResponse) {
 		if resp == nil {
 			return
 		}
@@ -123,7 +119,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 		handler(resp)
 	}
 
-	stream, err := c.cubic.StreamingRecognize(ctx)
+	stream, err := c.transcribe.StreamingRecognize(ctx)
 	if err != nil {
 		return err
 	}
@@ -188,14 +184,14 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 }
 
 // sendaudio sends audio to a stream.
-func sendaudio(stream cubicpb.CubicService_StreamingRecognizeClient,
-	cfg *cubicpb.RecognitionConfig, audio io.Reader,
+func sendaudio(stream transcribepb.TranscribeService_StreamingRecognizeClient,
+	cfg *transcribepb.RecognitionConfig, audio io.Reader,
 	bufsize uint32) error {
 	// The first message needs to be a config message, and all subsequent
 	// messages must be audio messages.
 	// Send the recognition config
-	if err := stream.Send(&cubicpb.StreamingRecognizeRequest{
-		Request: &cubicpb.StreamingRecognizeRequest_Config{Config: cfg},
+	if err := stream.Send(&transcribepb.StreamingRecognizeRequest{
+		Request: &transcribepb.StreamingRecognizeRequest_Config{Config: cfg},
 	}); err != nil {
 		// if this failed, we don't need to CloseSend
 		return err
@@ -207,9 +203,9 @@ func sendaudio(stream cubicpb.CubicService_StreamingRecognizeClient,
 	for {
 		n, err := audio.Read(buf)
 		if n > 0 {
-			if err2 := stream.Send(&cubicpb.StreamingRecognizeRequest{
-				Request: &cubicpb.StreamingRecognizeRequest_Audio{
-					Audio: &cubicpb.RecognitionAudio{Data: buf[:n]},
+			if err2 := stream.Send(&transcribepb.StreamingRecognizeRequest{
+				Request: &transcribepb.StreamingRecognizeRequest_Audio{
+					Audio: &transcribepb.RecognitionAudio{Data: buf[:n]},
 				},
 			}); err2 != nil {
 				// if we couldn't Send, the stream has
@@ -232,30 +228,6 @@ func sendaudio(stream cubicpb.CubicService_StreamingRecognizeClient,
 			return nil
 		}
 	}
-}
-
-// TODO (cenk) : implement compile context
-func (c *Client) CompileContext(ctx context.Context,
-	modelID, token string, phrases []cubicpb.ContextPhrase) (cubicpb.CompiledContext, error) {
-	phraseList := make([]*cubicpb.ContextPhrase, len(phrases))
-
-	for i, v := range phrases {
-		phraseList[i] = &cubicpb.ContextPhrase{
-			Text:  v.Text,
-			Boost: v.Boost,
-		}
-	}
-
-	compiled, err := c.cubic.CompileContext(ctx, &cubicpb.CompileContextRequest{
-		ModelId: modelID,
-		Token:   token,
-		Phrases: phraseList,
-	})
-	if err != nil {
-		return cubicpb.CompiledContext{}, err
-	}
-
-	return *compiled.Context, nil
 }
 
 func (c *Client) Close() error {

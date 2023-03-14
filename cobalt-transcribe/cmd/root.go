@@ -18,33 +18,21 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 )
 
-type clientConf struct {
-	Server Server
-}
-
-type Server struct {
-	Address     string        `toml:"Address"`     // URL of the server as specified by the command line arguments.
-	ModelID     string        `toml:"ModelID"`     // ID of the ASR model
-	Insecure    bool          `toml:"Insecure"`    // Whether to use insecure connection
-	IdleTimeout time.Duration `toml:"IdleTimeout"` // Time to wait for a response from the server.
-}
-
 // configuration struct to hold global flags
 var (
-	cConf  clientConf
-	confFn string
+	recoConfigStr string
+	serverAddress string
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "transcribe",
-	Short: "transcribe is a command line interface for interacting with a running instance of cubicsvr",
-	Long:  `transcribe is a command line interface for interacting with a running instance of cubicsvr`,
+	Use:   "transcribe-client",
+	Short: "transcribe is a command line interface for interacting with a running instance of transcribe-server.",
+	Long:  `transcribe is a command line interface for interacting with a running instance of transcribe-server.`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -59,8 +47,7 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(buildTransribeCmd())
-	// TODO (cenk): add modelscmd
-	// rootCmd.AddCommand(modelsCmd)
+	rootCmd.AddCommand(listModelsCmd)
 
 	// Add the global flags.
 	addGlobalFlags(rootCmd.PersistentFlags())
@@ -71,7 +58,7 @@ func simplifyGrpcErrors(err error) error {
 	// TODO create more robust/consistent ways of checking for each error.  This is a little too ad-hoc.
 	switch {
 	case strings.Contains(err.Error(), "transport: Error while dialing dial tcp"):
-		return fmt.Errorf("unable to reach server at the address '%s'", cConf.Server.Address)
+		return fmt.Errorf("unable to reach server at the address '%s'", serverAddress)
 
 	case strings.Contains(err.Error(), "authentication handshake failed: tls:"):
 		return fmt.Errorf(" '--insecure' required for this connection")
