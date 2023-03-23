@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/cobaltspeech/examples-go/cobalt-transcribe/internal/client"
+	"github.com/cobaltspeech/examples-go/transcribe/transcribe-client/internal/client"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

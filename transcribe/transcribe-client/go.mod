@@ -1,4 +1,4 @@
-module github.com/cobaltspeech/examples-go/cobalt-transcribe
+module github.com/cobaltspeech/examples-go/transcribe/transcribe-client
 
 go 1.19
 
@@ -7,7 +7,7 @@ require (
 	github.com/cobaltspeech/log v0.1.12
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
-	google.golang.org/grpc v1.53.0
+	google.golang.org/grpc v1.54.0
 )
 
 require (
