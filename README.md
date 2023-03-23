@@ -1,8 +1,8 @@
 # examples-go
 Examples for integrating with the Cobalt Go SDKs.  These apps are working examples of clients connecting to Cobalt's engines as a starting point for app developers.  They do not demonstrate all features of the engines nor are they meant as production code. In order to simplify and focus on the mechanics of calling the Cobalt engines, they include minimal error handling, logging, transcoding, output formatting, etc.
 
-## Cobalt-transcribe Example
-The [cobalt-transcribe](./cobalt-transcribe) folder gives an example of a client that takes an audio file, sends it to the transcribe server, and either writes the formatted hypothesis to stdout or full recognition response to a specified json file.
+## Transcribe Client Example
+The [transcribe-client](./transcribe/transcribe-client/) folder gives an example of a client that takes an audio file, sends it to the transcribe server, and either writes the formatted hypothesis to stdout or full recognition response to a specified json file.
 
 ## Diatheke Example
 The [diatheke](./diatheke) folder contains two example clients that interact with Diatheke.

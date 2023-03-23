@@ -38,7 +38,7 @@ lint-check: $(LINTER)
 	cd cubic && $(LINTER) run --deadline=2m
 	cd diatheke && $(LINTER) run --deadline=2m
 	cd cmdserver && $(LINTER) run --deadline=2m
-	cd cobalt-transcribe && $(LINTER) run --deadline=2m
+	cd transcribe/transcribe-client && $(LINTER) run --deadline=2m
 
 # Run tests
 .PHONY: test
@@ -52,7 +52,7 @@ build-cubic-example:
 
 .PHONY: build-cobalt-transcribe
 build-cobalt-transcribe:
-	cd cobalt-transcribe && go mod tidy && go build -o ./bin/transcribe-client .
+	cd transcribe/transcribe-client && go mod tidy && go build -o ./bin/transcribe-client .
 
 .PHONY: build-diatheke-example
 build-diatheke-example:

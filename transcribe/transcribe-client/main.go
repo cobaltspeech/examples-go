@@ -14,7 +14,7 @@
 
 package main
 
-import "github.com/cobaltspeech/examples-go/cobalt-transcribe/cmd"
+import "github.com/cobaltspeech/examples-go/transcribe/transcribe-client/cmd"
 
 func main() {
 	cmd.Execute()

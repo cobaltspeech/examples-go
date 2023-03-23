@@ -23,7 +23,7 @@ import (
 
 	transcribepb "github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5"
 
-	"github.com/cobaltspeech/examples-go/cobalt-transcribe/internal/client"
+	"github.com/cobaltspeech/examples-go/transcribe/transcribe-client/internal/client"
 	"github.com/cobaltspeech/log"
 	"github.com/spf13/cobra"
 )
