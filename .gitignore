@@ -12,12 +12,17 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
+_tmp/
 
-**/tmp
-**/bin
-cubic/transcribe
-**/.DS_Store
-cubic/DemoCallCenterAudioTranscripts/*
-cubic/friendly/*
-.vscode
+# built artifacts
+bin/
+/cubic/transcribe
+/cubic/DemoCallCenterAudioTranscripts/
+/cubic/friendly/
+
+# unrelated files
+.DS_Store
+.vscode/
+*~
+

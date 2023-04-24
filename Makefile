@@ -1,14 +1,16 @@
 # Copyright 2020 Cobalt Speech and Language Inc.
 
+TOP := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+
 # Needed tools
-BINDIR := $(CURDIR)/tmp/bin
+BINDIR := $(TOP)/_tmp/bin
 LINTER := $(BINDIR)/golangci-lint
 LINTER_VERSION := 1.51.0
 
 # Linux vs Darwin detection for the machine on which the build is taking place (not to be used for the build target)
 DEV_OS := $(shell uname -s | tr A-Z a-z)
 
-build: build-cubic-example build-diatheke-example build-cobalt-transcribe
+build: cubic-example diatheke-example transcribe-client
 
 $(LINTER):
 	mkdir -p $(BINDIR)
@@ -46,16 +48,16 @@ test:
 	cd cmdserver && go test -cover -race ./...
 
 # Build
-.PHONY: build-cubic-example
-build-cubic-example:
+.PHONY: cubic-example
+cubic-example:
 	cd cubic && go mod tidy && go build -o ./bin/transcribe ./cmd
 
-.PHONY: build-cobalt-transcribe
-build-cobalt-transcribe:
+.PHONY: transcribe-client
+transcribe-client:
 	cd transcribe/transcribe-client && go mod tidy && go build -o ./bin/transcribe-client .
 
-.PHONY: build-diatheke-example
-build-diatheke-example:
+.PHONY: diatheke-example
+diatheke-example:
 	cd diatheke && go mod tidy && \
 	go build -o ./bin/audio_client ./cmd/audio_client && \
 	go build -o ./bin/cli_client ./cmd/cli_client
