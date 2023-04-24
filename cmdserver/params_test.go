@@ -1,4 +1,4 @@
-// Copyright (2021-present) Cobalt Speech and Language, Inc. All rights reserved.
+// Copyright (2021 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ const (
 )
 
 func TestParamsString(t *testing.T) {
+	t.Parallel()
+
 	expected := map[string]string{
 		foo: "this is fooey",
 		bar: "a llama walks into a",
@@ -53,6 +55,8 @@ func TestParamsString(t *testing.T) {
 }
 
 func TestParamsInt(t *testing.T) {
+	t.Parallel()
+
 	expected := "17"
 	expectedInt := 17
 
@@ -71,6 +75,8 @@ func TestParamsInt(t *testing.T) {
 }
 
 func TestParamsFloat32(t *testing.T) {
+	t.Parallel()
+
 	expected := "1.372"
 	expectedFloat := float32(1.372)
 
@@ -89,6 +95,8 @@ func TestParamsFloat32(t *testing.T) {
 }
 
 func TestParamsFloat64(t *testing.T) {
+	t.Parallel()
+
 	expected := "0.3215"
 	expectedFloat := float64(0.3215)
 
@@ -107,6 +115,8 @@ func TestParamsFloat64(t *testing.T) {
 }
 
 func TestParamsBool(t *testing.T) {
+	t.Parallel()
+
 	expected := "true"
 	expectedBool := true
 

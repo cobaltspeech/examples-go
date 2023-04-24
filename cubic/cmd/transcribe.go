@@ -1,4 +1,4 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import (
 	"github.com/cobaltspeech/log/pkg/level"
 	cubic "github.com/cobaltspeech/sdk-cubic/grpc/go-cubic"
 	"github.com/cobaltspeech/sdk-cubic/grpc/go-cubic/cubicpb"
+
 	pbduration "google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -66,11 +67,14 @@ func main() {
 
 	if *configFile == "" {
 		fmt.Println("-config is required")
+
 		return
 	}
+
 	cfg, err := config.ReadConfigFile(*configFile)
 	if err != nil {
 		fmt.Printf("Error in config file %s: %v\n", *configFile, err)
+
 		return
 	}
 
@@ -82,8 +86,10 @@ func main() {
 	cubicConfig, err := config.CreateCubicConfig(cfg)
 	if err != nil {
 		fmt.Printf("Error in config file %s: %v\n", *configFile, err)
+
 		return
 	}
+
 	cfg.CubicConfig = cubicConfig
 	logger.Info("CubicConfig", cfg.CubicConfig)
 
@@ -91,23 +97,29 @@ func main() {
 	client, err := createClient(cfg)
 	if err != nil {
 		logger.Error("err", err)
+
 		return
 	}
+
 	defer client.Close()
 
 	// Load the files and place them in a channel
-	files, err := loadFiles(*inputDir, *outputDir, cfg.Extension, logger)
+	files, err := loadFiles(*inputDir, *outputDir, cfg.Extension)
 	if err != nil {
 		logger.Error("msg", "Error loading files", "err", err)
+
 		return
 	}
-	fileCount := len(files)
+
 	var numWorkers int
+
+	fileCount := len(files)
 	if fileCount < cfg.NumWorkers {
 		numWorkers = fileCount
 	} else {
 		numWorkers = cfg.NumWorkers
 	}
+
 	logger.Info("msg", "Processing files", "server", cfg.Server.Address, "fileCount", fileCount, "numWorkers", numWorkers)
 
 	// Setup channel for communicating between the various goroutines
@@ -117,9 +129,11 @@ func main() {
 	// each pull from the fileChannel and send requests to cubic server.
 	wg := &sync.WaitGroup{}
 	wg.Add(numWorkers + 1)
+
 	go feedInputFiles(fileChannel, files, wg, logger)
 
 	logger.Debug("msg", "Starting workers.", "numWorkers", numWorkers)
+
 	for i := 0; i < numWorkers; i++ {
 		go transcribeFiles(i, cfg, wg, client, fileChannel, logger)
 	}
@@ -130,8 +144,10 @@ func main() {
 // createClient instantiates the Client from the Cubic SDK to communicate with the server
 // specified in the config file
 func createClient(cfg config.Config) (*cubic.Client, error) {
-	var client *cubic.Client
-	var err error
+	var (
+		client *cubic.Client
+		err    error
+	)
 
 	if cfg.Server.Insecure {
 		client, err = cubic.NewClient(cfg.Server.Address, cubic.WithInsecure())
@@ -151,8 +167,9 @@ func getOutputWriter(outputPath string) (io.WriteCloser, error) {
 	// Create the file
 	file, err := os.Create(outputPath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create output file: %v", err)
+		return nil, fmt.Errorf("Failed to create output file: %w", err)
 	}
+
 	return file, nil
 }
 
@@ -160,44 +177,51 @@ func getOutputWriter(outputPath string) (io.WriteCloser, error) {
 func checkDir(dir, desc string) error {
 	fi, err := os.Stat(dir)
 	if err != nil {
-		return fmt.Errorf("error opening %s dir %s: %v", desc, dir, err)
-	}
-	if !fi.Mode().IsDir() {
+		return fmt.Errorf("error opening %s dir %s: %w", desc, dir, err)
+	} else if !fi.Mode().IsDir() {
 		return fmt.Errorf("%s dir %s is not a directory", desc, dir)
 	}
+
 	return nil
 }
 
 // loadFiles walks through all the files in inputDir that end in extension and adds them to a list for processing
-func loadFiles(inputDir, outputDir, extension string, logger log.Logger) ([]fileRef, error) {
+func loadFiles(inputDir, outputDir, extension string) ([]fileRef, error) {
 	if err := checkDir(inputDir, "input"); err != nil {
 		return nil, err
 	}
+
 	if outputDir == "" {
 		outputDir = inputDir
 	} else if err := checkDir(outputDir, "output"); err != nil {
 		return nil, err
 	}
+
 	files := make([]fileRef, 0)
 	err := filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
 		// files, outputDir, and extension are available as closures
 		if err != nil {
 			return err
 		}
+
 		if !info.Mode().IsRegular() || info.IsDir() || filepath.Ext(path) != extension {
 			return nil
 		}
 
 		outputPath := filepath.Join(outputDir, filepath.Base(path))
+
 		files = append(files, fileRef{
 			audioPath:  path,
 			outputPath: outputPath + ".txt",
 		})
+
 		return nil
 	})
+
 	if err != nil {
 		return nil, err
 	}
+
 	return files, nil
 }
 
@@ -206,6 +230,7 @@ func feedInputFiles(fileChannel chan<- fileRef, files []fileRef, wg *sync.WaitGr
 	for _, f := range files {
 		fileChannel <- f
 	}
+
 	logger.Info("msg", "Done feeding audio files.")
 	wg.Done()
 	close(fileChannel)
@@ -216,9 +241,11 @@ func feedInputFiles(fileChannel chan<- fileRef, files []fileRef, wg *sync.WaitGr
 func transcribeFiles(workerID int, cfg config.Config, wg *sync.WaitGroup, client *cubic.Client,
 	fileChannel <-chan fileRef, logger log.Logger) {
 	logger.Debug("Worker starting", workerID)
+
 	for input := range fileChannel {
 		transcribeFile(input, workerID, cfg, client, logger)
 	}
+
 	wg.Done()
 }
 
@@ -230,12 +257,14 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		logger.Error("file", input.audioPath, "err", err, "message", "Couldn't open audio file")
 		return
 	}
+
 	defer audio.Close()
 
 	w, err := getOutputWriter(input.outputPath)
 	if err != nil {
 		logger.Error("file", input.outputPath, "err", err, "message", "Couldn't open output file writer")
 	}
+
 	defer w.Close()
 
 	// Counter for segments
@@ -270,7 +299,6 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		// relationship between channels. Therefore, if we have multiple channels,
 		// sort by startTime (results.Alternatives[0].StartTime).
 		// If start times are the same, maintain the original order.
-
 		sort.Slice(lines, func(i, j int) bool {
 			return formatDuration(lines[i].Alternatives[0].GetStartTime()) < formatDuration(lines[j].Alternatives[0].GetStartTime())
 		})
@@ -282,10 +310,12 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 		if cfg.Prefix {
 			prefix = fmt.Sprintf("[Channel %d - %s] ", r.AudioChannel, formatDuration(r.Alternatives[0].GetStartTime()))
 		}
+
 		_, innerErr := fmt.Fprintf(w, "%s%s", prefix, r.Alternatives[0].Transcript)
 		if innerErr != nil {
 			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append transcript")
 		}
+
 		_, innerErr = fmt.Fprintln(w, "")
 		if innerErr != nil {
 			logger.Error("file", input.audioPath, "err", innerErr, "msg", "Couldn't append newline")
@@ -299,6 +329,7 @@ func transcribeFile(input fileRef, workerID int, cfg config.Config, client *cubi
 func formatDuration(x *pbduration.Duration) time.Duration {
 	d := time.Duration(x.GetSeconds()) * time.Second
 	d += time.Duration(x.GetNanos()) * time.Nanosecond
+
 	return d
 }
 
@@ -308,22 +339,16 @@ func simplifyGrpcErrors(cfg config.Config, err error) error {
 	switch {
 	case strings.Contains(err.Error(), "context deadline exceeded"):
 		return fmt.Errorf("timeout trying to reach server at '%s'", cfg.Server.Address)
-
 	case strings.Contains(err.Error(), "transport: Error while dialing dial tcp"):
 		return fmt.Errorf("unable to reach server at address '%s'", cfg.Server.Address)
-
 	case strings.Contains(err.Error(), "authentication handshake failed: tls:"):
 		return fmt.Errorf("'Insecure = true' required for this connection")
-
 	case strings.Contains(err.Error(), "desc = all SubConns are in TransientFailure, latest connection error: "):
 		return fmt.Errorf("'Insecure = true' must not be used for this connection")
-
 	case strings.Contains(err.Error(), "invalid model requested"):
-		return fmt.Errorf("invalid ModelID '%s' (%v)", cfg.Server.ModelID, err)
-
+		return fmt.Errorf("invalid ModelID '%s' (%w)", cfg.Server.ModelID, err)
 	case strings.Contains(err.Error(), "audio transcoding has stopped"):
 		return fmt.Errorf("check file format and channel information")
-
 	default:
 		return err // return the grpc error directly
 	}

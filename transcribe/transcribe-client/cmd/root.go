@@ -1,4 +1,4 @@
-// Copyright (2019) Cobalt Speech and Language Inc.
+// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,5 +69,4 @@ func simplifyGrpcErrors(err error) error {
 	default:
 		return fmt.Errorf(err.Error()) // return the grpc error directly
 	}
-
 }

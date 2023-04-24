@@ -1,0 +1,135 @@
+run:
+  # If invoked with -mod=readonly, the go command is disallowed from the implicit
+  # automatic updating of go.mod described above. Instead, it fails when any changes
+  # to go.mod are needed. This setting is most useful to check that go.mod does
+  # not need updates, such as in a continuous integration and testing system.
+  # If invoked with -mod=vendor, the go command assumes that the vendor
+  # directory holds the correct copies of dependencies and ignores
+  # the dependency descriptions in go.mod.
+  #
+  # Allowed values: readonly|vendor|mod
+  # By default, it isn't set.
+  modules-download-mode: readonly
+
+# output configuration options
+output:
+  # no cobalt specific config
+
+linters:
+  disable-all: true
+  enable:
+    # some that are enabled by default:
+    - errcheck # checking for unchecked errors
+    - gosimple # simplify code
+    - govet # find suspicious constructs
+    - ineffassign # detect unused assignments
+    - typecheck # runs type check on go code
+    - unused # check for unused constants/vars/funcs/types
+    - bodyclose # http body must be closed
+    - dupl # avoid code duplication
+    - dupword # avoid duplicate words in comments
+    - durationcheck # avoid multiplication of two durations
+    - errchkjson # check types passed to JSON encoding functions
+    - errname # check that sentinel errors start with Err and error types end in Error
+    - errorlint # find errors that will cause problems with error wrapping scheme
+    - execinquery # query string checker for SQL
+    - exhaustive # check exhaustiveness of enum switch and map literals
+    - exportloopref # check for pointers to enclosing loop variables
+    - forcetypeassert # forced type assertions must be checked
+    - funlen # detect long functions
+    - gocyclo # detect cyclomatic complexity
+    - goimports # fix imports and ensure gofmt
+    - goheader # check cobalt copyright headers
+    - gomnd # avoid magic numbers in code
+    - gosec # inspect code for security problems
+    - importas # enforce consistent import aliases
+    - lll # avoid lines that are too long
+    - loggercheck # check logger for unpaired keyvals
+    - makezero # fine slice declarations with nonzero initial length used with append
+    - misspell # check comments for US spellings
+    - nestif # check for too deeply nested if blocks
+    - nolintlint # report illformed linter directives
+    - paralleltest # detect misuse of t.Parallel
+    - predeclared # find code that shadows predeclared identifiers
+    - reassign # check that variables are not reassigned
+    - rowserrcheck # check Err of rows is checked in SQL
+    - sqlclosecheck # check that sql.Rows and sql.Stmt are closed
+    - tenv # check t.Setenv is used instead of os.Setenv in tests
+    - thelper # check that test helpers use t.Helper
+    - unconvert # remove unnecessary type conversions
+    - unparam # report unused function params
+    - usestdlibvars # detect possibility to use vars/consts from go stdlib
+    - wastedassign # find wasted assignment statements
+    - wsl
+
+# All available settings of specific linters.
+linters-settings:
+  exhaustive:
+    default-signifies-exhaustive: true
+
+  funlen:
+    # Checks the number of lines in a function.
+    lines: 100
+    # Checks the number of statements in a function.
+    statements: 50
+
+  gocyclo:
+    # Minimal code complexity to report.
+    # Default: 30 (but we recommend 10-20)
+    min-complexity: 15
+
+  goheader:
+    values:
+      const:
+        # Define here const type values in format k:v.
+        # For example:
+        COMPANY: Cobalt Speech and Language, Inc.
+      regexp:
+        YEAR: 20\d{2} -- present
+    template: "Copyright ({{ YEAR }}) {{ COMPANY }}"
+
+  goimports:
+    local-prefixes: github.com/cobaltspeech
+
+  lll:
+    line-length: 140
+    tab-width: 1
+
+  loggercheck:
+    # List of custom rules to check against, where each rule is a single logger pattern, useful for wrapped loggers.
+    # For example: https://github.com/timonwong/loggercheck/blob/7395ab86595781e33f7afba27ad7b55e6956ebcd/testdata/custom-rules.txt
+    # Default: empty
+    rules:
+      - (github.com/cobaltspeech/log.Logger).Error
+      - (github.com/cobaltspeech/log.Logger).Info
+      - (github.com/cobaltspeech/log.Logger).Debug
+      - (github.com/cobaltspeech/log.Logger).Trace
+
+  misspell:
+    # Correct spellings using locale preferences for US or UK.
+    # Setting locale to US will correct the British spelling of 'colour' to 'color'.
+    # Default is to use a neutral variety of English.
+    locale: US
+
+  nestif:
+    min-complexity: 8
+
+  nolintlint:
+    allow-unused: false
+    require-explanation: true
+    require-specific: true
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - dupl
+        - errcheck
+        - forcetypeassert
+        - funlen
+        - gocyclo
+        - gomnd
+        - gosec
+        - lll
+        - nestif

@@ -1,4 +1,4 @@
-// Copyright (2021) Cobalt Speech and Language Inc.
+// Copyright (2021 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,33 +30,34 @@ import (
 	"github.com/cobaltspeech/sdk-diatheke/grpc/go-diatheke/v2/diathekepb"
 )
 
+const defaultBuffSize = 8192
+
 // Contains application settings as defined in the config file.
 var appCfg config.Config
 
 func main() {
 	// Read the config file
 	configFile := flag.String("config", "config.toml", "Path to the config file")
+
 	flag.Parse()
-	err := loadConfig(*configFile)
-	if err != nil {
+
+	if err := loadConfig(*configFile); err != nil {
 		log.Fatalf("error reading config file: %v", err)
-		return
 	}
 
-	// Create the Wake-word cubicsvr client.  This client is an ASR
-	// model that is only focused on identifying the wake word in a
-	// long running recognizer, and unblocking once the wake word is
-	// detected.
-	// Creating client without TLS. Remove cubic.WithInsecure() if using TLS
+	// Create the Wake-word cubicsvr client. This client is an ASR model that is only focused on identifying
+	// the wake word in a long running recognizer, and unblocking once the wake word is detected.
 	wwOpts := make([]cubic.Option, 0)
 	if appCfg.Server.Insecure {
 		// NOTE: Secure connections are recommended for production
 		wwOpts = append(wwOpts, cubic.WithInsecure())
 	}
+
 	wwClient, err := cubic.NewClient(appCfg.WakeWordServer.Address, wwOpts...)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer wwClient.Close()
 
 	// Use the first wake word model available
@@ -64,9 +65,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	model := modelResp.Models[0]
-	sampleRateBytes := model.Attributes.SampleRate * 2 // 2 bytes per sample
 
+	model := modelResp.Models[0]
+	sampleRateBytes := model.Attributes.SampleRate * 2 //nolint: gomnd // 2 bytes per sample
 	cfg := &cubicpb.RecognitionConfig{
 		ModelId:               model.Id,
 		EnableRawTranscript:   true,
@@ -77,15 +78,13 @@ func main() {
 	recorder := audio.NewRecorder(appCfg.Recording)
 	if err = recorder.Start(); err != nil {
 		log.Fatalf("Recorder Error!!!!")
-		return
 	}
 
-	// Wrap the recorder in a "StoppableReader" that will allow the reader's Read()
-	// method to return EOF on the first Read() after abortFunc is called (to force an
-	// exit from the wake word cubicsvr after the wake word is recognized), but later
-	// Read() calls will be successful.  This StoppableReader will also allow audio
-	// to be re-wound so when the Diatheke server reads from the same stream it can
-	// start reading right at the start of the wake word.
+	// Wrap the recorder in a "StoppableReader" that will allow the reader's Read() method to return EOF on
+	// the first Read() after abortFunc is called (to force an exit from the wake word cubicsvr after the
+	// wake word is recognized), but later Read() calls will be successful.  This StoppableReader will also
+	// allow audio to be re-wound so when the Diatheke server reads from the same stream it can start reading
+	// right at the start of the wake word.
 	wwBufferSize := int(float32(sampleRateBytes) * appCfg.WakeWordServer.AudioBufferSec)
 	stoppableReader := audio.NewStoppableReader(recorder.Output(), wwBufferSize)
 
@@ -95,20 +94,34 @@ func main() {
 		// NOTE: Secure connections are recommended for production
 		opts = append(opts, diatheke.WithInsecure())
 	}
+
 	diathekeClient, err := diatheke.NewClient(appCfg.Server.Address, opts...)
 	if err != nil {
 		log.Fatalf("error creating diathekeClient: %v\n", err)
-		return
 	}
+
 	defer diathekeClient.Close()
 
-	// Print the server version info
+	if err := runDiatheke(cfg, wwClient, diathekeClient, stoppableReader, sampleRateBytes); err != nil {
+		log.Fatalf("error running Diatheke client: %v\n", err)
+	}
+}
+
+func runDiatheke(
+	cfg *cubicpb.RecognitionConfig,
+	wwClient *cubic.Client,
+	diathekeClient *diatheke.Client,
+	stoppableReader *audio.StoppableReader,
+	sampleRateBytes uint32,
+) error {
 	bctx := context.Background()
+
+	// Print the server version info
 	ver, err := diathekeClient.Version(bctx)
 	if err != nil {
-		log.Fatalf("error getting server version: %v\n", err)
-		return
+		return fmt.Errorf("error getting server version: %w\n", err)
 	}
+
 	log.Printf("Server Versions\n")
 	log.Printf("  Diatheke: %v\n", ver.Diatheke)
 	log.Printf("  Chosun (NLU): %v\n", ver.Chosun)
@@ -118,10 +131,11 @@ func main() {
 	// Print the list of available models
 	modelList, err := diathekeClient.ListModels(bctx)
 	if err != nil {
-		log.Fatalf("error getting model list: %v\n", err)
-		return
+		return fmt.Errorf("error getting model list: %w\n", err)
 	}
+
 	log.Printf("Available Models:\n")
+
 	for _, mdl := range modelList.Models {
 		log.Printf("  ID: %v\n", mdl.Id)
 		log.Printf("    Name: %v\n", mdl.Name)
@@ -133,8 +147,7 @@ func main() {
 	// Create a session using the model specified in the config file.
 	session, err := diathekeClient.CreateSession(bctx, appCfg.Server.ModelID)
 	if err != nil {
-		log.Fatalf("CreateSession error: %v\n", err)
-		return
+		return fmt.Errorf("CreateSession error: %w\n", err)
 	}
 
 	// Begin processing actions
@@ -144,15 +157,22 @@ func main() {
 			appCfg.WakeWordServer.MinWakePhraseConfidence, int(sampleRateBytes),
 			diathekeClient, session, stoppableReader)
 		if err != nil {
-			log.Fatalf("error processing actions: %v\n", err)
+			fmt.Printf("error processing actions: %v\n", err)
+
+			break
+		} else if session == nil {
+			fmt.Printf("got nil session back")
+
 			break
 		}
 	}
 
 	// Clean up the session
 	if err = diathekeClient.DeleteSession(bctx, session.Token); err != nil {
-		log.Fatalf("error deleting session: %v\n", err)
+		return fmt.Errorf("error deleting session: %w\n", err)
 	}
+
+	return nil
 }
 
 // processActions executes the actions for the given session
@@ -166,18 +186,21 @@ func processActions(wwClient *cubic.Client, wwCfg *cubicpb.RecognitionConfig,
 		if inputAction := action.GetInput(); inputAction != nil {
 			// The WaitForUserAction will involve a session update.
 			log.Println(".....wait for input")
+
 			return waitForInput(reader, wwClient, wwCfg, wwPhrases, wwMinConf,
 				wwBytesPerSec, diathekeClient, session, inputAction)
 		} else if reply := action.GetReply(); reply != nil {
-			log.Println(".....GetReply")
 			// Replies do not require a session update.
+			log.Println(".....GetReply")
+
 			err := handleReply(diathekeClient, reply)
 			if err != nil {
 				return nil, err
 			}
 		} else if cmd := action.GetCommand(); cmd != nil {
-			log.Println(".....GetCommand")
 			// The CommandAction will involve a session update.
+			log.Println(".....GetCommand")
+
 			return handleCommand(diathekeClient, session, cmd)
 		} else if action.Action != nil {
 			return nil, fmt.Errorf("received unknown action type %T", action.Action)
@@ -190,6 +213,8 @@ func processActions(wwClient *cubic.Client, wwCfg *cubicpb.RecognitionConfig,
 // waitForInput creates an ASR stream and records audio from the user.
 // The audio is sent to Diatheke until an ASR result is returned, which
 // is used to return an updated session.
+//
+//nolint:funlen // no embedded sub functions for easier maintenance
 func waitForInput(
 	reader *audio.StoppableReader,
 	wwClient *cubic.Client,
@@ -226,29 +251,36 @@ func waitForInput(
 		// phrasess could be supported with this handler if the wake word model used a multi-word
 		// token for the wake phrase)
 		var wakeWordStartTimeSec float64
+
 		resultHandler := func(resp *cubicpb.RecognitionResponse) {
 			for _, result := range resp.Results {
-				if !result.IsPartial {
-					transcript := result.Alternatives[0].Transcript
-					confidence := result.Alternatives[0].Confidence
-					for _, wakePhrase := range wwPhrases {
-						if strings.HasSuffix(transcript, wakePhrase) && confidence >= wwMinConf {
-							// Find the index of the first word in the wake phrase in the alternatives list.
-							wakePhraseFirstWord := strings.Split(wakePhrase, " ")[0]
-							wakePhraseStartIndex := -1
-							for i, wordInfo := range result.Alternatives[0].Words {
-								if wakePhraseFirstWord == wordInfo.Word {
-									wakePhraseStartIndex = i
-									break
-								}
+				if result.IsPartial {
+					continue
+				}
+
+				transcript := result.Alternatives[0].Transcript
+				confidence := result.Alternatives[0].Confidence
+
+				for _, wakePhrase := range wwPhrases {
+					if strings.HasSuffix(transcript, wakePhrase) && confidence >= wwMinConf {
+						// Find the index of the first word in the wake phrase in the alternatives list.
+						wakePhraseFirstWord := strings.Split(wakePhrase, " ")[0]
+						wakePhraseStartIndex := -1
+
+						for i, wordInfo := range result.Alternatives[0].Words {
+							if wakePhraseFirstWord == wordInfo.Word {
+								wakePhraseStartIndex = i
+
+								break
 							}
-
-							wakeWordStartTimeSec = float64(result.Alternatives[wakePhraseStartIndex].StartTime.Seconds) +
-								float64(result.Alternatives[wakePhraseStartIndex].StartTime.Nanos)/1000000000.0
-
-							reader.Stop()
-							break
 						}
+
+						wakeWordStartTimeSec = float64(result.Alternatives[wakePhraseStartIndex].StartTime.Seconds) +
+							float64(result.Alternatives[wakePhraseStartIndex].StartTime.Nanos)/1000000000.0 //nolint: gomnd // nano second is not a magic number
+
+						reader.Stop()
+
+						break
 					}
 				}
 			}
@@ -258,16 +290,17 @@ func waitForInput(
 		// The time that the wake word stars will be set in "wakeWordStartTimeSec".
 		// The start time of the wake word will be set in "wakeWordStartTimeSec"
 		log.Println("Waiting for wake word...")
+
 		err := wwClient.StreamingRecognize(context.Background(), wwCfg, reader, resultHandler)
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		log.Println("Wake word found")
 
 		// Rewind the recorder to the start of the wake word.
 		// The start of the rewound stream is now considered to be time=0.0
-		err = reader.Rewind(int(math.Round(wakeWordStartTimeSec*float64(wwBytesPerSec))), true)
-		if err != nil {
+		if err = reader.Rewind(int(math.Round(wakeWordStartTimeSec*float64(wwBytesPerSec))), true); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -281,7 +314,7 @@ func waitForInput(
 	log.Printf("Recording...\n")
 
 	// Record until we get a result
-	result, err := diatheke.ReadASRAudio(stream, reader, 8192)
+	result, err := diatheke.ReadASRAudio(stream, reader, defaultBuffSize)
 	if err != nil {
 		return nil, err
 	}
@@ -342,14 +375,16 @@ func handleCommand(
 
 	session, err := client.ProcessCommandResult(context.Background(), session.Token, &result)
 	if err != nil {
-		err = fmt.Errorf("ProcessCommandResult error: %v", err)
+		err = fmt.Errorf("ProcessCommandResult error: %w", err)
 	}
+
 	return session, err
 }
 
 // loadConfig reads the specified config file at application startup.
 func loadConfig(filepath string) error {
 	var err error
+
 	appCfg, err = config.ReadConfigFile(filepath)
 	if err != nil {
 		return err

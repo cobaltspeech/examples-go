@@ -1,4 +1,4 @@
-// Copyright (2019) Cobalt Speech and Language Inc.
+// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cobaltspeech/examples-go/transcribe/transcribe-client/internal/client"
+
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,6 @@ var versionCmd = &cobra.Command{
 	Short: "Fetch version of transcribe-server.",
 	Args:  addGlobalFlagsCheck(cobra.NoArgs),
 	Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
-
 		err := version(ctx, c)
 
 		return err
@@ -35,7 +35,7 @@ var versionCmd = &cobra.Command{
 }
 
 func version(ctx context.Context, c *client.Client) error {
-	v, err := c.CobaltVersions(context.Background())
+	v, err := c.CobaltVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("error while getting version: %w", err)
 	}

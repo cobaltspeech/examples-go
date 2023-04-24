@@ -1,4 +1,4 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/cobaltspeech/examples-go/diatheke/internal/config"
@@ -32,11 +33,11 @@ var appCfg config.Config
 func main() {
 	// Read the config file
 	configFile := flag.String("config", "config.toml", "Path to the config file")
+
 	flag.Parse()
-	err := loadConfig(*configFile)
-	if err != nil {
-		fmt.Printf("error reading config file: %v", err)
-		return
+
+	if err := loadConfig(*configFile); err != nil {
+		log.Fatalf("error reading config file: %v", err)
 	}
 
 	// Create a new client
@@ -48,18 +49,25 @@ func main() {
 
 	client, err := diatheke.NewClient(appCfg.Server.Address, opts...)
 	if err != nil {
-		fmt.Printf("error creating client: %v\n", err)
-		return
+		log.Fatalf("error creating client: %v\n", err)
 	}
+
 	defer client.Close()
 
-	// Print the server version info
+	if err := runDiatheke(client); err != nil {
+		log.Fatalf("error running Diatheke client: %v\n", err)
+	}
+}
+
+func runDiatheke(client *diatheke.Client) error {
 	bctx := context.Background()
+
+	// Print the server version info
 	ver, err := client.Version(bctx)
 	if err != nil {
-		fmt.Printf("error getting server version: %v\n", err)
-		return
+		return fmt.Errorf("error getting server version: %w\n", err)
 	}
+
 	fmt.Printf("Server Versions\n")
 	fmt.Printf("  Diatheke: %v\n", ver.Diatheke)
 	fmt.Printf("  Chosun (NLU): %v\n", ver.Chosun)
@@ -69,10 +77,11 @@ func main() {
 	// Print the list of available models
 	modelList, err := client.ListModels(bctx)
 	if err != nil {
-		fmt.Printf("error getting model list: %v\n", err)
-		return
+		return fmt.Errorf("error getting model list: %w\n", err)
 	}
+
 	fmt.Printf("Available Models:\n")
+
 	for _, mdl := range modelList.Models {
 		fmt.Printf("  ID: %v\n", mdl.Id)
 		fmt.Printf("    Name: %v\n", mdl.Name)
@@ -84,8 +93,7 @@ func main() {
 	// Create a session using the specified model ID.
 	session, err := client.CreateSession(bctx, appCfg.Server.ModelID)
 	if err != nil {
-		fmt.Printf("CreateSession error: %v\n", err)
-		return
+		return fmt.Errorf("CreateSession error: %w\n", err)
 	}
 
 	// Begin processing actions
@@ -93,17 +101,21 @@ func main() {
 		session, err = processActions(client, session)
 		if err != nil {
 			fmt.Printf("error processing actions: %v\n", err)
+
 			break
 		} else if session == nil {
 			fmt.Printf("got nil session back")
+
 			break
 		}
 	}
 
 	// Clean up the session.
 	if err = client.DeleteSession(bctx, session.Token); err != nil {
-		fmt.Printf("error deleting session: %v\n", err)
+		return fmt.Errorf("error deleting session: %w\n", err)
 	}
+
+	return nil
 }
 
 // processActions executes the actions for the given session
@@ -114,19 +126,16 @@ func processActions(client *diatheke.Client, session *diathekepb.SessionOutput,
 	for _, action := range session.ActionList {
 		if inputAction := action.GetInput(); inputAction != nil {
 			// The WaitForUserAction will involve a session update.
-			return waitForInput(client, session, inputAction)
+			return waitForInput(client, session)
 		} else if reply := action.GetReply(); reply != nil {
 			// Replies do not require a session update.
-			handleReply(client, reply)
+			handleReply(reply)
 		} else if cmd := action.GetCommand(); cmd != nil {
 			// The CommandAction will involve a session update.
 			return handleCommand(client, session, cmd)
 		} else if scribe := action.GetTranscribe(); scribe != nil {
 			// Transcribe actions do not require a session update.
-			err := handleTranscribe(scribe)
-			if err != nil {
-				return nil, err
-			}
+			handleTranscribe(scribe)
 		} else if action.Action != nil {
 			return nil, fmt.Errorf("received unknown action type %T", action.Action)
 		}
@@ -140,7 +149,6 @@ func processActions(client *diatheke.Client, session *diathekepb.SessionOutput,
 func waitForInput(
 	client *diatheke.Client,
 	session *diathekepb.SessionOutput,
-	inputAction *diathekepb.WaitForUserAction,
 ) (*diathekepb.SessionOutput, error) {
 	// Display a prompt
 	fmt.Printf("\n\nDiatheke> ")
@@ -153,13 +161,14 @@ func waitForInput(
 	// Update the session with the text
 	session, err := client.ProcessText(context.Background(), session.Token, text)
 	if err != nil {
-		err = fmt.Errorf("ProcessText error: %v", err)
+		err = fmt.Errorf("ProcessText error: %w", err)
 	}
+
 	return session, err
 }
 
 // handleReply prints the given reply text to stdout.
-func handleReply(client *diatheke.Client, reply *diathekepb.ReplyAction) {
+func handleReply(reply *diathekepb.ReplyAction) {
 	fmt.Printf("  Reply: %v\n", reply.Text)
 }
 
@@ -178,22 +187,24 @@ func handleCommand(
 	result := diathekepb.CommandResult{
 		Id: cmd.Id,
 	}
+
 	session, err := client.ProcessCommandResult(context.Background(), session.Token, &result)
 	if err != nil {
-		err = fmt.Errorf("ProcessCommandResult error: %v", err)
+		err = fmt.Errorf("ProcessCommandResult error: %w", err)
 	}
+
 	return session, err
 }
 
 // handleTranscribe uses ASR to record a transcription from the user.
-func handleTranscribe(scribe *diathekepb.TranscribeAction) error {
+func handleTranscribe(scribe *diathekepb.TranscribeAction) {
 	fmt.Printf("  Transcribe: %+v\n", scribe)
-	return nil
 }
 
 // loadConfig reads the specified config file at application startup.
 func loadConfig(filepath string) error {
 	var err error
+
 	appCfg, err = config.ReadConfigFile(filepath)
 	if err != nil {
 		return err

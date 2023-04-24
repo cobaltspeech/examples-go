@@ -1,4 +1,4 @@
-// Copyright (2021-present) Cobalt Speech and Language, Inc. All rights reserved.
+// Copyright (2021 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ import (
 )
 
 func TestSetCommand(t *testing.T) {
+	t.Parallel()
+
 	// Create the server
 	svr := NewServer(nil)
 
@@ -59,6 +61,7 @@ func TestSetCommand(t *testing.T) {
 			"d": "silly",
 		},
 	}
+
 	svr.SetCommand("cmd5", func(in Input, out *Output) error {
 		if len(in.Parameters) != 0 {
 			t.Errorf("got unexpected input params: %+v", in.Parameters)
@@ -71,6 +74,7 @@ func TestSetCommand(t *testing.T) {
 	// Create the test server and client
 	tsvr := httptest.NewServer(&svr)
 	defer tsvr.Close()
+
 	client := newTestClient(tsvr)
 
 	if cmd1Out, err := client.send(cmd1ExpectedIn); err != nil {
@@ -87,6 +91,8 @@ func TestSetCommand(t *testing.T) {
 }
 
 func TestUnknownCmd(t *testing.T) {
+	t.Parallel()
+
 	// Create the server
 	svr := NewServer(nil)
 	svr.SetCommand("junk", func(Input, *Output) error {
@@ -99,7 +105,9 @@ func TestUnknownCmd(t *testing.T) {
 	defer tsvr.Close()
 
 	client := tsvr.Client()
+
 	var body bytes.Buffer
+
 	if _, err := body.WriteString(`{"id": "not_junk"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -110,9 +118,13 @@ func TestUnknownCmd(t *testing.T) {
 	} else if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("did not get status InternalServerError in response")
 	}
+
+	defer resp.Body.Close()
 }
 
 func TestBadRequest(t *testing.T) {
+	t.Parallel()
+
 	// Create the server
 	svr := NewServer(nil)
 	svr.SetCommand("junk", func(Input, *Output) error {
@@ -125,7 +137,9 @@ func TestBadRequest(t *testing.T) {
 	defer tsvr.Close()
 
 	client := tsvr.Client()
+
 	var body bytes.Buffer
+
 	if _, err := body.WriteString(`{"bad_request":"hahaha"`); err != nil {
 		t.Fatal(err)
 	}
@@ -136,9 +150,13 @@ func TestBadRequest(t *testing.T) {
 	} else if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("did not get status BadRequest in response")
 	}
+
+	defer resp.Body.Close()
 }
 
 func TestHandlerRegistry(t *testing.T) {
+	t.Parallel()
+
 	hr := newRegistry()
 	hr.setModelCmd("m1", "c1", func(in Input, out *Output) error {
 		if in.ModelID != "m1" || in.CommandID != "c1" || in.Parameters["target"] != "m1c1" {
@@ -201,12 +219,16 @@ func TestHandlerRegistry(t *testing.T) {
 	for i := range testList {
 		test := testList[i]
 		name := test.modelID + "-" + test.cmdID
+
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			in := Input{
 				ModelID:    test.modelID,
 				CommandID:  test.cmdID,
 				Parameters: make(Params),
 			}
+
 			in.Parameters.SetString("target", test.target)
 
 			handler, found := hr.findHandler(in)
@@ -239,20 +261,27 @@ func newTestClient(svr *httptest.Server) testClient {
 }
 
 func (tc *testClient) send(in Input) (Output, error) {
-	var body bytes.Buffer
+	var (
+		body   bytes.Buffer
+		result Output
+	)
+
 	encoder := json.NewEncoder(&body)
 	if err := encoder.Encode(&in); err != nil {
-		return Output{}, err
+		return result, err
 	}
 
 	resp, err := tc.client.Post(tc.url, "application/json", &body)
 	if err != nil {
-		return Output{}, err
+		return result, err
 	}
+
 	defer resp.Body.Close()
 
 	decoder := json.NewDecoder(resp.Body)
-	var result Output
-	err = decoder.Decode(&result)
+	if err = decoder.Decode(&result); err != nil {
+		return result, err
+	}
+
 	return result, err
 }

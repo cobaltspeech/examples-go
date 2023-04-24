@@ -1,4 +1,4 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -68,9 +68,9 @@ func (rec *Recorder) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create the record command and get its stdout pipe
-	cmd := exec.CommandContext(ctx,
-		rec.appConfig.Application,
-		rec.appConfig.ArgList()...)
+	args := rec.appConfig.ArgList()
+	name := rec.appConfig.Application
+	cmd := exec.CommandContext(ctx, name, args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -155,7 +155,10 @@ func (p *Player) Start() error {
 	}
 
 	// Setup the command and get its stdin pipe
-	cmd := exec.Command(p.appConfig.Application, p.appConfig.ArgList()...)
+	name := p.appConfig.Application
+	args := p.appConfig.ArgList()
+	cmd := exec.Command(name, args...)
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -189,6 +192,7 @@ func (p *Player) Stop() error {
 	// Close the stdin pipe (which should also close the application)
 	// and wait for the app to complete
 	p.stdin.Close()
+
 	if err := p.cmd.Wait(); err != nil {
 		return err
 	}
@@ -214,7 +218,7 @@ func (p *Player) Input() io.Writer {
 
 // StoppableReader wraps an existing Reader that can be "stopped"
 // with a function call where the next Read() will return EOF, but future
-// reads will be sucessful. This reader can also be "rewound" to a point in
+// reads will be successful. This reader can also be "rewound" to a point in
 // the past that allows some old data to be re-read before any new data is
 // read. The Rewind() functionality has a limitation that Rewind() cannot
 // go back more than the maximum buffer size and Rewind() cannot be called
@@ -224,16 +228,18 @@ func (p *Player) Input() io.Writer {
 // down to a size of maxBufferSize the oldest bytes will be removed from
 // the buffer.
 type StoppableReader struct {
-	mu                 sync.Mutex
-	origReader         io.Reader    // the original reader
-	appendReader       io.Reader    // the wrapped reader (buffers what is read)
-	currentReader      io.Reader    // the current reader, may include buffered bytes if Rewind() was called
-	buffer             bytes.Buffer // a buffer of previously read bytes
-	bufferStartOffset  int          // "actual" index at the start of the buffer
-	maxBufferSize      int          // number of bytes stored in the buffer before it may be trimmed
-	bufferSizeFactor   float32      // buffer will be pruned if it grows to maxaBufferSize*bufferSizeFactor
-	pauseRead          bool         // set to true if the next Read() should return EOF
-	rewindWithoutReset bool         // Check to make sure Rewind() is not called twice without a Reset() (buffer is modified by reading a rewound reader)
+	mu            sync.Mutex
+	origReader    io.Reader    // the original reader
+	appendReader  io.Reader    // the wrapped reader (buffers what is read)
+	currentReader io.Reader    // the current reader, may include buffered bytes if Rewind() was called
+	buffer        bytes.Buffer // a buffer of previously read bytes
+
+	bufferStartOffset int     // "actual" index at the start of the buffer
+	maxBufferSize     int     // number of bytes stored in the buffer before it may be trimmed
+	bufferSizeFactor  float32 // buffer will be pruned if it grows to maxaBufferSize*bufferSizeFactor
+
+	pauseRead          bool // set to true if the next Read() should return EOF
+	rewindWithoutReset bool // Check to make sure Rewind() is not called twice without a Reset() (reading a rewound reader modify buffer)
 }
 
 // NewStoppableReader creates a new stoppable reader that wraps the
@@ -248,6 +254,7 @@ func NewStoppableReader(reader io.Reader, maxBufferSize int) *StoppableReader {
 	sr.bufferSizeFactor = 2.0
 	sr.pauseRead = false
 	sr.rewindWithoutReset = false
+
 	return &sr
 }
 
@@ -255,8 +262,10 @@ func NewStoppableReader(reader io.Reader, maxBufferSize int) *StoppableReader {
 func (sr *StoppableReader) Read(p []byte) (n int, err error) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
+
 	if sr.pauseRead {
 		sr.pauseRead = false // let the next Read() call return data
+
 		return 0, io.EOF
 	}
 
@@ -266,6 +275,7 @@ func (sr *StoppableReader) Read(p []byte) (n int, err error) {
 		sr.buffer = *bytes.NewBuffer(sr.buffer.Bytes()[sr.buffer.Len()-sr.maxBufferSize:])
 		sr.bufferStartOffset += origLen - sr.maxBufferSize
 	}
+
 	return sr.currentReader.Read(p)
 }
 
@@ -295,7 +305,8 @@ func (sr *StoppableReader) Rewind(offset int, resetTimeZero bool) error {
 	if sr.rewindWithoutReset {
 		// This is only occasionally an error (depending on how it is used). The caller may choose
 		// to ignore the error, but it is discouraged.
-		err = fmt.Errorf("Rewind() should not be called twice without a Reset() between them because reading a rewound buffer may modify the buffered data")
+		err = fmt.Errorf("Rewind() should not be called twice without a Reset() " +
+			"between them because reading a rewound buffer may modify the buffered data")
 	} else {
 		sr.rewindWithoutReset = true
 	}
@@ -309,9 +320,11 @@ func (sr *StoppableReader) Rewind(offset int, resetTimeZero bool) error {
 			offset, sr.bufferStartOffset)
 	} else if offset > (sr.bufferStartOffset + sr.buffer.Len()) {
 		// Offset value is after the end of the buffer (impossible to buffer future data).
-		err = fmt.Errorf("StoppableAudioReader::Rewind() error, the requested offset %d is larger that the end of the buffer (in the future!): %d",
+		err = fmt.Errorf(
+			"StoppableAudioReader::Rewind() error, the requested offset %d is larger that the end of the buffer (in the future!): %d",
 			offset, sr.bufferStartOffset+sr.buffer.Len())
 		sr.currentReader = sr.appendReader
+
 		return err
 	} else {
 		// The requested offset is in the current buffer.
@@ -340,6 +353,7 @@ func (sr *StoppableReader) Reset() {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	sr.buffer.Reset()
+
 	sr.appendReader = io.TeeReader(sr.origReader, &sr.buffer)
 	sr.currentReader = sr.appendReader
 	sr.bufferStartOffset = 0
