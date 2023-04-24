@@ -1,9 +1,10 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
 
 package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -32,7 +33,7 @@ func NewClient(conn *grpc.ClientConn, opts ...Option) (*Client, error) {
 	for _, opt := range opts {
 		err := opt(&args)
 		if err != nil {
-			return nil, fmt.Errorf("unable to create a client: %v", err)
+			return nil, fmt.Errorf("unable to create a client: %w", err)
 		}
 	}
 
@@ -108,7 +109,6 @@ type RecognitionResponseHandler func(*transcribepb.StreamingRecognizeResponse)
 func (c *Client) StreamingRecognize(ctx context.Context,
 	cfg transcribepb.RecognitionConfig, //nolint:govet // cfg is a large struct but we want to use a copy
 	audio io.Reader, handler RecognitionResponseHandler) error {
-
 	var handlerErr error
 
 	handlerpb := func(resp *transcribepb.StreamingRecognizeResponse) {
@@ -139,7 +139,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 	wg.Add(1)
 
 	go func() {
-		if err := sendaudio(stream, &cfg, audio, c.streamingBufSize); err != nil && err != io.EOF {
+		if err := sendaudio(stream, &cfg, audio, c.streamingBufSize); err != nil && !errors.Is(err, io.EOF) {
 			// if sendaudio encountered io.EOF, it's only a
 			// notification that the stream has closed.  The actual
 			// status will be obtained in a subsequent Recv call, in
@@ -153,11 +153,11 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 
 	for {
 		in, err := stream.Recv()
-
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			errch <- err
+
 			break
 		}
 
@@ -172,7 +172,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 		// very likely they are related (e.g. connection reset causing
 		// both the send and recv to fail) and we therefore return the
 		// first error and discard the other.
-		return fmt.Errorf("streaming recognition failed: %v", err)
+		return fmt.Errorf("streaming recognition failed: %w", err)
 	default:
 	}
 

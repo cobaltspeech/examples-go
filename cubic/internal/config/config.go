@@ -1,4 +1,4 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/cobaltspeech/sdk-cubic/grpc/go-cubic/cubicpb"
+
+	"github.com/BurntSushi/toml"
 	pbduration "google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -65,6 +66,7 @@ func ReadConfigFile(filename string) (Config, error) {
 		// If timeout not specified, set to default
 		config.Server.GRPCTimeout = 2
 	}
+
 	return config, nil
 }
 
@@ -76,7 +78,9 @@ func ReadConfigFile(filename string) (Config, error) {
 // for description of other available options.
 func CreateCubicConfig(cfg Config) (*cubicpb.RecognitionConfig, error) {
 	var audioEncoding cubicpb.RecognitionConfig_Encoding
+
 	ext := strings.ToLower(cfg.Extension)
+
 	switch ext {
 	case ".wav":
 		audioEncoding = cubicpb.RecognitionConfig_WAV

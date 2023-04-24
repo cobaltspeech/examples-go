@@ -1,4 +1,4 @@
-// Copyright (2019) Cobalt Speech and Language Inc.
+// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cobaltspeech/examples-go/transcribe/transcribe-client/internal/client"
+
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +36,6 @@ var listModelsCmd = &cobra.Command{
 }
 
 func listModels(ctx context.Context, c *client.Client) error {
-
 	v, err := c.ListModels(ctx)
 	if err != nil {
 		return fmt.Errorf("error while getting the list of models: %w", err)

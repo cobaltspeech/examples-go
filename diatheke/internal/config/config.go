@@ -1,4 +1,4 @@
-// Copyright (2020) Cobalt Speech and Language Inc.
+// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,9 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/BurntSushi/toml"
 	"github.com/cobaltspeech/examples-go/diatheke/internal/audio"
+
+	"github.com/BurntSushi/toml"
 )
 
 // ServerConfig contains the Diatheke server settings
@@ -63,13 +64,13 @@ func ReadConfigFile(filename string) (Config, error) {
 	// If the recording or playback fields are set, check them.
 	if config.Recording.Application != "" {
 		if err := checkAudioConfig(config.Recording.Application); err != nil {
-			return config, fmt.Errorf("recording config error - %v", err)
+			return config, fmt.Errorf("recording config error - %w", err)
 		}
 	}
 
 	if config.Playback.Application != "" {
 		if err := checkAudioConfig(config.Playback.Application); err != nil {
-			return config, fmt.Errorf("playback config error - %v", err)
+			return config, fmt.Errorf("playback config error - %w", err)
 		}
 	}
 

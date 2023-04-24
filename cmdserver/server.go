@@ -1,4 +1,4 @@
-// Copyright (2021-present) Cobalt Speech and Language, Inc. All rights reserved.
+// Copyright (2021 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -92,6 +92,14 @@ func (svr *Server) SetModelCommand(modelID, cmdID string, h Handler) {
 	svr.registry.setModelCmd(modelID, cmdID, h)
 }
 
+const (
+	defaultHTTPReadTimeout     = 5 * time.Second
+	defaultHTTPWriteTimeout    = 10 * time.Second
+	defaultHTTPIdleTimeout     = 120 * time.Second
+	defaultHTTPShutdownTimeout = 10 * time.Second
+	defaultContextTimeout      = 10 * time.Second
+)
+
 // Run starts the http server and listens at the given address
 // (e.g., ":8072", "localhost:1515", "127.0.0.1:3535") until
 // either an error occurs or the interrupt signal is received.
@@ -104,12 +112,21 @@ func (svr *Server) Run(address string) error {
 
 	// Get the address in case ":0" was used as the port number,
 	// in which case a port was automatically selected.
-	address = lis.Addr().(*net.TCPAddr).String()
+	lisAddr, ok := lis.Addr().(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("unable to get listener network address")
+	}
+
+	address = lisAddr.String()
 
 	// Set up the http server.
 	hsvr := &http.Server{
-		Addr:    address,
-		Handler: svr,
+		Addr:              address,
+		Handler:           svr,
+		ReadTimeout:       defaultHTTPReadTimeout,
+		ReadHeaderTimeout: defaultHTTPReadTimeout,
+		WriteTimeout:      defaultHTTPWriteTimeout,
+		IdleTimeout:       defaultHTTPIdleTimeout,
 	}
 
 	// Use an error channel to collect errors from the go
@@ -140,9 +157,9 @@ func (svr *Server) Run(address string) error {
 		svr.logger.Info("msg", "shutting down http server...")
 
 		// Gracefully shut down the server
-		const timeout = 10 * time.Second
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 		defer cancel()
+
 		return hsvr.Shutdown(ctx)
 	}
 }
@@ -151,9 +168,10 @@ func (svr *Server) Run(address string) error {
 // the command, forwards the data to the correct command Handler,
 // then encodes the result to send back to Diatheke.
 func (svr *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var input Input
+
 	// Read the JSON request
 	decoder := json.NewDecoder(r.Body)
-	var input Input
 	if err := decoder.Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -167,10 +185,12 @@ func (svr *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("could not find handler for command %q", input.CommandID),
 			http.StatusInternalServerError,
 		)
+
 		svr.logger.Error(
 			"msg", "could not find command handler",
 			"cmd", input.CommandID,
 		)
+
 		return
 	}
 
@@ -180,15 +200,15 @@ func (svr *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Parameters: make(Params),
 		Metadata:   input.Metadata,
 	}
-	err := handler(input, &output)
-	if err != nil {
+	if err := handler(input, &output); err != nil {
 		output.Error = err.Error()
 	}
 
 	// Send the command result
 	w.Header().Set("Content-Type", "application/json")
+
 	encoder := json.NewEncoder(w)
-	if err = encoder.Encode(&output); err != nil {
+	if err := encoder.Encode(&output); err != nil {
 		svr.logger.Error(
 			"msg", "failed to write command response",
 			"error", err,
@@ -238,6 +258,7 @@ func (hr *handlerRegistry) findHandler(in Input) (Handler, bool) {
 		cmdID:   in.CommandID,
 		modelID: in.ModelID,
 	}
+
 	handler, found := hr.cmdModelFuncs[pair]
 	if found {
 		return handler, true
@@ -249,5 +270,6 @@ func (hr *handlerRegistry) findHandler(in Input) (Handler, bool) {
 	}
 
 	handler, found = hr.modelFuncs[in.ModelID]
+
 	return handler, found
 }

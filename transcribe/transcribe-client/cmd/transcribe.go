@@ -1,4 +1,4 @@
-// Copyright (2019) Cobalt Speech and Language Inc.
+// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ import (
 	"os"
 	"strings"
 
-	transcribepb "github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5"
-
 	"github.com/cobaltspeech/examples-go/transcribe/transcribe-client/internal/client"
+	transcribepb "github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5"
 	"github.com/cobaltspeech/log"
+
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +36,6 @@ func buildTransribeCmd() *cobra.Command {
 		Short: "Transcribe an audio file.",
 		Args:  addGlobalFlagsCheck(cobra.ExactArgs(1)),
 		Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
-
 			logger := log.NewLeveledLogger()
 
 			// args[0] is the audio file
@@ -50,7 +49,8 @@ func buildTransribeCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&outputFn, "output-json", "", "Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
-	cmd.Flags().StringVar(&recoConfigStr, "recognition-config", "{}", "Json string to configure recognition. See https://pkg.go.dev/github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5#RecognitionConfig for details")
+	cmd.Flags().StringVar(&recoConfigStr, "recognition-config", "{}", "Json string to configure recognition. "+
+		"See https://pkg.go.dev/github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5#RecognitionConfig for more details.")
 
 	return cmd
 }
@@ -83,8 +83,8 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client, wavFn,
 
 	decoder := json.NewDecoder(strings.NewReader(recoConfigStr))
 	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&recoConfig)
-	if err != nil {
+
+	if err = decoder.Decode(&recoConfig); err != nil {
 		return fmt.Errorf("error decoding the recognition config %w", err)
 	}
 

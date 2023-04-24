@@ -12,7 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -63,6 +62,7 @@ func runClientFunc(f func(context.Context, *client.Client, []string) error) func
 		if err != nil {
 			log.Fatal("unable to create a client: ", err)
 		}
+
 		defer c.Close()
 
 		return f(ctx, c, args)
