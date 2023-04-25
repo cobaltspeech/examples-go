@@ -1,4 +1,4 @@
-// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
+// Copyright (2023 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,114 +29,144 @@ import (
 )
 
 func buildTransribeCmd() *cobra.Command {
-	var outputFn string
+	var (
+		cfgStr  string
+		outPath string
+	)
 
-	var cmd = &cobra.Command{
-		Use:   "recognize <audio file>",
+	cmd := &cobra.Command{
+		Use:   "recognize <AUDIO_FILE>",
 		Short: "Transcribe an audio file.",
-		Args:  addGlobalFlagsCheck(cobra.ExactArgs(1)),
-		Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
-			logger := log.NewLeveledLogger()
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) < 1 {
+				cmd.PrintErr(cmd.UsageString())
 
-			// args[0] is the audio file
-			err := transcribe(ctx, logger, c, args[0], outputFn)
-			if err != nil {
-				return err
+				return
 			}
 
-			return nil
-		}),
+			// TODO: add verbosity
+			logger := log.NewLeveledLogger()
+
+			c, err := client.NewClient(serverAddress, client.WithLogger(logger), client.WithInsecure())
+			if err != nil {
+				cmd.PrintErrf("error: failed to create a client: %v\n", err)
+
+				return
+			}
+
+			defer c.Close()
+
+			// args[0] is the audio file
+			if err := transcribe(context.Background(), logger, c, cfgStr, args[0], outPath); err != nil {
+				cmd.PrintErrf("error: %v\n", err)
+
+				return
+			}
+		},
 	}
 
-	cmd.Flags().StringVar(&outputFn, "output-json", "", "Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
-	cmd.Flags().StringVar(&recoConfigStr, "recognition-config", "{}", "Json string to configure recognition. "+
+	cmd.Flags().StringVar(&outPath, "output-json", "", "Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
+	cmd.Flags().StringVar(&cfgStr, "recognition-config", "{}", "Json string to configure recognition. "+
 		"See https://pkg.go.dev/github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5#RecognitionConfig for more details.")
 
 	return cmd
 }
 
-func transcribe(ctx context.Context, logger log.Logger, c *client.Client, wavFn, outputFn string) error {
-	var err error
-
-	audio, err := os.Open(wavFn)
+func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
+	cfgStr, audioPath, outPath string) error {
+	// read the recognition config from the config string
+	cfg, err := parseRecognitionConfig(cfgStr)
 	if err != nil {
-		return fmt.Errorf("cannot open audio file %w", err)
+		return fmt.Errorf("failed to parse recognition config: %w", err)
 	}
+
+	if cfg.ModelId == "" {
+		// model is not specified, use the default (first available) model
+		if cfg.ModelId, err = getDefaultModelID(ctx, c); err != nil {
+			return fmt.Errorf("failed to get default model ID: %w", err)
+		}
+	}
+
+	audio, err := os.Open(audioPath)
+	if err != nil {
+		return fmt.Errorf("failed to open audio file (%s): %w", audioPath, err)
+	}
+
 	defer audio.Close()
 
-	var resp []transcribepb.StreamingRecognizeResponse
+	var resp []*transcribepb.StreamingRecognizeResponse
 
 	// The callback for results
 	callBackFunc := func(response *transcribepb.StreamingRecognizeResponse) {
-		if response.Error != nil {
-			logger.Info("msg", response.Error.Message)
+		if response == nil {
 			return
 		}
 
+		if response.Error != nil {
+			logger.Error("msg", "recognition error", "error", response.Error)
+		}
+
 		if !response.Result.IsPartial && len(response.Result.Alternatives) > 0 {
-			resp = append(resp, *response) //nolint:govet // it is okay to copy
+			logger.Trace("chan", response.Result.AudioChannel, "Transcript", response.Result.Alternatives[0].TranscriptFormatted)
+
+			resp = append(resp, response)
 		}
 	}
 
-	// read the recoConf from the config string
-	var recoConfig transcribepb.RecognitionConfig
-
-	decoder := json.NewDecoder(strings.NewReader(recoConfigStr))
-	decoder.DisallowUnknownFields()
-
-	if err = decoder.Decode(&recoConfig); err != nil {
-		return fmt.Errorf("error decoding the recognition config %w", err)
+	if err = c.StreamingRecognize(ctx, cfg, audio, callBackFunc); err != nil {
+		return fmt.Errorf("failed to transcribe: %w", err)
 	}
 
-	// use the default (first available) model if model is not specified
-	if recoConfig.ModelId == "" {
-		v, err := c.ListModels(ctx)
-		if err != nil {
-			return fmt.Errorf("error while getting the list of models: %w", err)
-		}
-
-		recoConfig.ModelId = v[0].Id
-	}
-
-	err = c.StreamingRecognize(ctx, recoConfig, audio, callBackFunc) //nolint:govet // it is okay to copy
-
-	if err != nil {
-		return fmt.Errorf("error during recognition %s %w", wavFn, simplifyGrpcErrors(err))
-	}
-
-	err = writeTranscript(outputFn, resp)
-
-	if err != nil {
-		logger.Error("error", "error writing transcript", "msg", err)
-		os.Exit(1)
+	if err = writeTranscript(outPath, resp); err != nil {
+		return fmt.Errorf("failed to write out transcript: %w", err)
 	}
 
 	return nil
 }
 
-func writeTranscript(path string, response []transcribepb.StreamingRecognizeResponse) error {
-	var enc *json.Encoder
+func parseRecognitionConfig(s string) (*transcribepb.RecognitionConfig, error) {
+	var cfg transcribepb.RecognitionConfig
 
+	decoder := json.NewDecoder(strings.NewReader(s))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("failed to decode recognition config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+func getDefaultModelID(ctx context.Context, c *client.Client) (string, error) {
+	v, err := c.ListModels(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list models: %w", err)
+	}
+
+	return v[0].Id, nil
+}
+
+func writeTranscript(path string, response []*transcribepb.StreamingRecognizeResponse) error {
 	if path == "" {
 		for i := 0; i < len(response); i++ {
-			fmt.Fprintln(os.Stdout, response[i].Result.Alternatives[0].TranscriptFormatted)
+			fmt.Println(response[i].Result.Alternatives[0].TranscriptFormatted)
 		}
 
 		return nil
-	} else {
-		outF, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		defer outF.Close()
-
-		enc = json.NewEncoder(outF)
 	}
 
+	outF, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create output file (path=%s): %w", path, err)
+	}
+
+	defer outF.Close()
+
+	enc := json.NewEncoder(outF)
 	enc.SetIndent("", "  ")
 
 	if err := enc.Encode(response); err != nil {
-		return err
+		return fmt.Errorf("failed to encode responses JSON: %w", err)
 	}
 
 	return nil

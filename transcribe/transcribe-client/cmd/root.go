@@ -1,4 +1,4 @@
-// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
+// Copyright (2023 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,16 +17,12 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 // configuration struct to hold global flags
-var (
-	recoConfigStr string
-	serverAddress string
-)
+var serverAddress string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -39,7 +35,7 @@ var rootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -50,23 +46,6 @@ func init() {
 	rootCmd.AddCommand(listModelsCmd)
 
 	// Add the global flags.
-	addGlobalFlags(rootCmd.PersistentFlags())
-}
-
-// simplifyGrpcErrors converts semi-cryptic gRPC errors into more user-friendly errors.
-func simplifyGrpcErrors(err error) error {
-	// TODO create more robust/consistent ways of checking for each error.  This is a little too ad-hoc.
-	switch {
-	case strings.Contains(err.Error(), "transport: Error while dialing dial tcp"):
-		return fmt.Errorf("unable to reach server at the address '%s'", serverAddress)
-
-	case strings.Contains(err.Error(), "authentication handshake failed: tls:"):
-		return fmt.Errorf(" '--insecure' required for this connection")
-
-	case strings.Contains(err.Error(), "desc = all SubConns are in TransientFailure, latest connection error: "):
-		return fmt.Errorf(" '--insecure' must not be used for this connection")
-
-	default:
-		return fmt.Errorf(err.Error()) // return the grpc error directly
-	}
+	// TODO: add insecure flag
+	rootCmd.PersistentFlags().StringVar(&serverAddress, "server", "127.0.0.1:2727", "address of the transcribe GRPC server.")
 }
