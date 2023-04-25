@@ -30,8 +30,9 @@ import (
 
 func buildTransribeCmd() *cobra.Command {
 	var (
-		cfgStr  string
-		outPath string
+		recCfgStr string
+		outPath   string
+		verbose   int
 	)
 
 	cmd := &cobra.Command{
@@ -44,8 +45,7 @@ func buildTransribeCmd() *cobra.Command {
 				return
 			}
 
-			// TODO: add verbosity
-			logger := log.NewLeveledLogger()
+			logger := log.NewLeveledLogger(log.WithFilterLevel(getLogLevel(verbose)))
 
 			c, err := client.NewClient(serverAddress, client.WithLogger(logger), client.WithInsecure())
 			if err != nil {
@@ -57,7 +57,7 @@ func buildTransribeCmd() *cobra.Command {
 			defer c.Close()
 
 			// args[0] is the audio file
-			if err := transcribe(context.Background(), logger, c, cfgStr, args[0], outPath); err != nil {
+			if err := transcribe(context.Background(), logger, c, recCfgStr, args[0], outPath); err != nil {
 				cmd.PrintErrf("error: %v\n", err)
 
 				return
@@ -66,27 +66,31 @@ func buildTransribeCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&outPath, "output-json", "", "Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
-	cmd.Flags().StringVar(&cfgStr, "recognition-config", "{}", "Json string to configure recognition. "+
+	cmd.Flags().StringVar(&recCfgStr, "recognition-config", "{}", "Json string to configure recognition. "+
 		"See https://pkg.go.dev/github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5#RecognitionConfig for more details.")
+	cmd.Flags().IntVarP(&verbose, "verbose", "v", 0, "logger verbose modes. 0=Info, 1=Debug, 2=Trace")
 
 	return cmd
 }
 
 func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
-	cfgStr, audioPath, outPath string) error {
+	recCfgStr, audioPath, outPath string) error {
 	// read the recognition config from the config string
-	cfg, err := parseRecognitionConfig(cfgStr)
+	cfg, err := parseRecognitionConfig(recCfgStr)
 	if err != nil {
 		return fmt.Errorf("failed to parse recognition config: %w", err)
 	}
 
+	// Check model ID. Use default model if not specify .
 	if cfg.ModelId == "" {
-		// model is not specified, use the default (first available) model
+		logger.Debug("msg", "model is not specified, use the default (first available) model")
+
 		if cfg.ModelId, err = getDefaultModelID(ctx, c); err != nil {
 			return fmt.Errorf("failed to get default model ID: %w", err)
 		}
 	}
 
+	// open audio file
 	audio, err := os.Open(audioPath)
 	if err != nil {
 		return fmt.Errorf("failed to open audio file (%s): %w", audioPath, err)
@@ -94,6 +98,7 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
 
 	defer audio.Close()
 
+	// create output writer
 	wr, err := newRespWriter(logger, outPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output writer: %w", err)
@@ -117,9 +122,20 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
 		}
 	}
 
+	// log basic info
+	logger.Debug("msg", "start streaming recognize",
+		"server address", serverAddress,
+		"input path", audioPath,
+		"output path", outPath,
+		"model ID", cfg.ModelId,
+		"recognition config", cfg,
+	)
+
 	if err = c.StreamingRecognize(ctx, cfg, audio, callBackFunc); err != nil {
 		return fmt.Errorf("failed to transcribe: %w", err)
 	}
+
+	logger.Info("msg", "streaming recognize done")
 
 	return nil
 }
