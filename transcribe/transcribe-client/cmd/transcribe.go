@@ -70,10 +70,11 @@ func buildTransribeCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&outPath, "output-json", "", "Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
-	cmd.Flags().StringVar(&recCfgStr, "recognition-config", "{}", "Json string to configure recognition. "+
+	cmd.Flags().StringVarP(&outPath, "output-json", "o", "",
+		"Path to output json file. If not specified, writes formatted hypothesis to STDOUT.")
+	cmd.Flags().StringVarP(&recCfgStr, "recognition-config", "r", "{}", "Json string to configure recognition. "+
 		"See https://pkg.go.dev/github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5#RecognitionConfig for more details.")
-	cmd.Flags().IntVarP(&verbose, "verbose", "v", 0, "logger verbose modes. 0=Info, 1=Debug, 2=Trace")
+	cmd.Flags().IntVarP(&verbose, "verbose", "v", 0, "Logger verbose modes. 0=Info, 1=Debug, 2=Trace")
 
 	return cmd
 }

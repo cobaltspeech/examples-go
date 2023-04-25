@@ -30,8 +30,8 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "transcribe-client",
-	Short: "transcribe is a command line interface for interacting with a running instance of transcribe-server.",
-	Long:  `transcribe is a command line interface for interacting with a running instance of transcribe-server.`,
+	Short: "transcribe-client is a command line interface for interacting with a running instance of transcribe-server.",
+	Long:  `transcribe-client is a command line interface for interacting with a running instance of transcribe-server.`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -49,7 +49,7 @@ func init() {
 	rootCmd.AddCommand(listModelsCmd)
 
 	// Add the global flags.
-	rootCmd.PersistentFlags().StringVar(&serverAddress, "server", "127.0.0.1:2727", "address of the transcribe GRPC server.")
+	rootCmd.PersistentFlags().StringVarP(&serverAddress, "server", "s", "127.0.0.1:2727", "Transcribe-server GRPC address.")
 	rootCmd.PersistentFlags().BoolVar(&isInsecure, "insecure", false,
 		"If flag provided, TLS will not be used when establishing a connection to the server")
 }

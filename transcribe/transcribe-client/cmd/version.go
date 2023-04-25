@@ -25,7 +25,7 @@ import (
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Fetch version of transcribe-server.",
+	Short: "Fetch version of Transcribe server.",
 	Run: func(cmd *cobra.Command, args []string) {
 		var opts []client.Option
 
