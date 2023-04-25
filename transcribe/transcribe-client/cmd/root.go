@@ -22,7 +22,10 @@ import (
 )
 
 // configuration struct to hold global flags
-var serverAddress string
+var (
+	serverAddress string // address is the GRPC address of Transcribe server.
+	isInsecure    bool   // isInsecure is a flag specify insecure connection to the server.
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -46,6 +49,7 @@ func init() {
 	rootCmd.AddCommand(listModelsCmd)
 
 	// Add the global flags.
-	// TODO: add insecure flag
 	rootCmd.PersistentFlags().StringVar(&serverAddress, "server", "127.0.0.1:2727", "address of the transcribe GRPC server.")
+	rootCmd.PersistentFlags().BoolVar(&isInsecure, "insecure", false,
+		"If flag provided, TLS will not be used when establishing a connection to the server")
 }

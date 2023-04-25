@@ -27,7 +27,13 @@ var listModelsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List models available in transcribe server.",
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := client.NewClient(serverAddress, client.WithInsecure())
+		var opts []client.Option
+
+		if isInsecure {
+			opts = append(opts, client.WithInsecure())
+		}
+
+		c, err := client.NewClient(serverAddress, opts...)
 		if err != nil {
 			cmd.PrintErrf("error: failed to create a client: %v\n", err)
 

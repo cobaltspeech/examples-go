@@ -46,8 +46,13 @@ func buildTransribeCmd() *cobra.Command {
 			}
 
 			logger := log.NewLeveledLogger(log.WithFilterLevel(getLogLevel(verbose)))
+			opts := []client.Option{client.WithLogger(logger)}
 
-			c, err := client.NewClient(serverAddress, client.WithLogger(logger), client.WithInsecure())
+			if isInsecure {
+				opts = append(opts, client.WithInsecure())
+			}
+
+			c, err := client.NewClient(serverAddress, opts...)
 			if err != nil {
 				cmd.PrintErrf("error: failed to create a client: %v\n", err)
 
