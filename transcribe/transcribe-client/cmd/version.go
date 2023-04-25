@@ -51,7 +51,7 @@ var versionCmd = &cobra.Command{
 }
 
 func version(ctx context.Context, c *client.Client) error {
-	v, err := c.CobaltVersions(ctx)
+	v, err := c.Versions(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch version: %w", err)
 	}
