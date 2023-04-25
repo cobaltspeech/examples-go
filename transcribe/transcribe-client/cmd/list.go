@@ -1,4 +1,4 @@
-// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
+// Copyright (2023 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,19 +26,28 @@ import (
 var listModelsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List models available in transcribe server.",
-	Args:  addGlobalFlagsCheck(cobra.NoArgs),
-	Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
+	Run: func(cmd *cobra.Command, args []string) {
+		c, err := client.NewClient(serverAddress, client.WithInsecure())
+		if err != nil {
+			cmd.PrintErrf("error: failed to create a client: %v\n", err)
 
-		err := listModels(ctx, c)
+			return
+		}
 
-		return err
-	}),
+		defer c.Close()
+
+		if err := listModels(context.Background(), c); err != nil {
+			cmd.PrintErrf("error: %v\n", err)
+
+			return
+		}
+	},
 }
 
 func listModels(ctx context.Context, c *client.Client) error {
 	v, err := c.ListModels(ctx)
 	if err != nil {
-		return fmt.Errorf("error while getting the list of models: %w", err)
+		return fmt.Errorf("failed to list models: %w", err)
 	}
 
 	fmt.Printf("%s\n", v)

@@ -1,4 +1,4 @@
-// Copyright (2019 -- present) Cobalt Speech and Language, Inc.
+// Copyright (2023 -- present) Cobalt Speech and Language, Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,18 +26,28 @@ import (
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Fetch version of transcribe-server.",
-	Args:  addGlobalFlagsCheck(cobra.NoArgs),
-	Run: runClientFunc(func(ctx context.Context, c *client.Client, args []string) error {
-		err := version(ctx, c)
+	Run: func(cmd *cobra.Command, args []string) {
+		c, err := client.NewClient(serverAddress, client.WithInsecure())
+		if err != nil {
+			cmd.PrintErrf("error: failed to create a client: %v\n", err)
 
-		return err
-	}),
+			return
+		}
+
+		defer c.Close()
+
+		if err := version(context.Background(), c); err != nil {
+			cmd.PrintErrf("error: %v\n", err)
+
+			return
+		}
+	},
 }
 
 func version(ctx context.Context, c *client.Client) error {
 	v, err := c.CobaltVersions(ctx)
 	if err != nil {
-		return fmt.Errorf("error while getting version: %w", err)
+		return fmt.Errorf("failed to fetch version: %w", err)
 	}
 
 	fmt.Printf("Transcribe server %s\n", v)

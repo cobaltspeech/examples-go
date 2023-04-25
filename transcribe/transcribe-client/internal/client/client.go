@@ -1,9 +1,22 @@
-// Copyright (2020 -- present) Cobalt Speech and Language, Inc.
+// Copyright (2023 -- present) Cobalt Speech and Language, Inc.
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +25,8 @@ import (
 	"github.com/cobaltspeech/log"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	transcribepb "github.com/cobaltspeech/go-genproto/cobaltspeech/transcribe/v5"
 )
@@ -25,20 +40,31 @@ type Client struct {
 	streamingBufSize uint32
 }
 
-func NewClient(conn *grpc.ClientConn, opts ...Option) (*Client, error) {
-	var args clientArgs
-
-	args.streamingBufSize = defaultStreamingBufsize
+func NewClient(addr string, opts ...Option) (*Client, error) {
+	args := clientArgs{
+		streamingBufSize: defaultStreamingBufsize,
+		log:              log.NewDiscardLogger(),
+		ctx:              context.Background(),
+		creds:            credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}),
+	}
 
 	for _, opt := range opts {
 		err := opt(&args)
 		if err != nil {
-			return nil, fmt.Errorf("unable to create a client: %w", err)
+			return nil, fmt.Errorf("failed to create a client: %w", err)
 		}
 	}
 
-	if args.log == nil {
-		args.log = log.NewDiscardLogger()
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(args.creds),
+		grpc.WithBlock(),
+		grpc.WithReturnConnectionError(),
+		grpc.FailOnNonTempDialError(true),
+	}
+
+	conn, err := grpc.DialContext(args.ctx, addr, dialOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a client connection: %w\n", err)
 	}
 
 	return &Client{
@@ -52,6 +78,8 @@ func NewClient(conn *grpc.ClientConn, opts ...Option) (*Client, error) {
 type clientArgs struct {
 	log              log.Logger
 	streamingBufSize uint32
+	creds            credentials.TransportCredentials
+	ctx              context.Context
 }
 
 // Option configures how we setup the connection with a server.
@@ -75,7 +103,32 @@ func WithStreamingBufferSize(n uint32) Option {
 
 func WithLogger(logger log.Logger) Option {
 	return func(c *clientArgs) error {
-		c.log = logger
+		if logger == nil {
+			c.log = log.NewDiscardLogger()
+		} else {
+			c.log = logger
+		}
+
+		return nil
+	}
+}
+
+func WithInsecure() Option {
+	return func(c *clientArgs) error {
+		c.creds = insecure.NewCredentials()
+
+		return nil
+	}
+}
+
+func WithContext(ctx context.Context) Option {
+	return func(c *clientArgs) error {
+		if ctx == nil {
+			c.ctx = context.Background()
+		} else {
+			c.ctx = ctx
+		}
+
 		return nil
 	}
 }
@@ -107,7 +160,7 @@ func (c *Client) ListModels(ctx context.Context) ([]*transcribepb.Model, error) 
 type RecognitionResponseHandler func(*transcribepb.StreamingRecognizeResponse)
 
 func (c *Client) StreamingRecognize(ctx context.Context,
-	cfg transcribepb.RecognitionConfig, //nolint:govet // cfg is a large struct but we want to use a copy
+	cfg *transcribepb.RecognitionConfig,
 	audio io.Reader, handler RecognitionResponseHandler) error {
 	var handlerErr error
 
@@ -139,7 +192,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 	wg.Add(1)
 
 	go func() {
-		if err := sendaudio(stream, &cfg, audio, c.streamingBufSize); err != nil && !errors.Is(err, io.EOF) {
+		if err := sendaudio(stream, cfg, audio, c.streamingBufSize); err != nil && !errors.Is(err, io.EOF) {
 			// if sendaudio encountered io.EOF, it's only a
 			// notification that the stream has closed.  The actual
 			// status will be obtained in a subsequent Recv call, in
