@@ -94,7 +94,12 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
 
 	defer audio.Close()
 
-	var responses []*transcribepb.StreamingRecognizeResponse
+	wr, err := newRespWriter(logger, outPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output writer: %w", err)
+	}
+
+	defer wr.close()
 
 	// The callback for results
 	callBackFunc := func(resp *transcribepb.StreamingRecognizeResponse) {
@@ -108,21 +113,12 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
 
 		if !resp.Result.IsPartial && len(resp.Result.Alternatives) > 0 {
 			logger.Trace("chan", resp.Result.AudioChannel, "transcript", resp.Result.Alternatives[0].TranscriptFormatted)
-
-			if outPath == "" {
-				fmt.Println(resp.Result.Alternatives[0].TranscriptFormatted)
-			} else {
-				responses = append(responses, resp)
-			}
+			wr.write(resp)
 		}
 	}
 
 	if err = c.StreamingRecognize(ctx, cfg, audio, callBackFunc); err != nil {
 		return fmt.Errorf("failed to transcribe: %w", err)
-	}
-
-	if err = writeResponses(outPath, responses); err != nil {
-		return fmt.Errorf("failed to write out transcript: %w", err)
 	}
 
 	return nil
@@ -150,25 +146,75 @@ func getDefaultModelID(ctx context.Context, c *client.Client) (string, error) {
 	return v[0].Id, nil
 }
 
-func writeResponses(path string, responses []*transcribepb.StreamingRecognizeResponse) error {
-	if path == "" {
-		// empty path to write, do nothing.
-		return nil
+// respWriter encodes and writes list of recognize response JSON to output file, if output
+// file is specify. Otherwise, writes formatted hypothesis to STDOUT.
+type respWriter struct {
+	logger log.Logger
+	outF   *os.File
+}
+
+func newRespWriter(l log.Logger, path string) (*respWriter, error) {
+	if l == nil {
+		l = log.NewDiscardLogger()
 	}
 
-	outF, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("failed to create output file (path=%s): %w", path, err)
+	var (
+		outF *os.File
+		err  error
+	)
+
+	if path != "" {
+		outF, err = os.Create(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create output file (path=%s): %w", path, err)
+		}
+
+		if _, err := outF.Write([]byte("[\n")); err != nil {
+			return nil, fmt.Errorf("unable to start writing list of recognize response: %w", err)
+		}
 	}
 
-	defer outF.Close()
+	return &respWriter{
+		logger: l,
+		outF:   outF,
+	}, nil
+}
 
-	enc := json.NewEncoder(outF)
-	enc.SetIndent("", "  ")
+func (w *respWriter) write(resp *transcribepb.StreamingRecognizeResponse) {
+	if w.outF == nil {
+		// no output file specified, print formatted hypothesis to STDOUT
+		fmt.Println(resp.Result.Alternatives[0].TranscriptFormatted)
 
-	if err := enc.Encode(responses); err != nil {
-		return fmt.Errorf("failed to encode responses JSON: %w", err)
+		return
 	}
 
-	return nil
+	const indent = "  "
+
+	// write JSON encoded response to output file.
+	enc := json.NewEncoder(w.outF)
+	enc.SetIndent(indent, indent)
+
+	if _, err := w.outF.Write([]byte(indent)); err != nil {
+		w.logger.Error("error", "unable to write to output file", "err", err)
+	}
+
+	if err := enc.Encode(resp); err != nil {
+		w.logger.Error("error", "failed to encode response JSON", "response", resp, "err", err)
+	}
+}
+
+func (w *respWriter) close() {
+	if w.outF == nil {
+		return
+	}
+
+	if _, err := w.outF.Write([]byte("]\n")); err != nil {
+		w.logger.Error("error", "unable to close list of recognize response", "err", err)
+	}
+
+	if err := w.outF.Close(); err != nil {
+		w.logger.Error("error", "unable to close output file", "err", err)
+	}
+
+	w.logger.Debug("msg", "successfully close output file")
 }
