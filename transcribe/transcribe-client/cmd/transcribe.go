@@ -94,22 +94,26 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
 
 	defer audio.Close()
 
-	var resp []*transcribepb.StreamingRecognizeResponse
+	var responses []*transcribepb.StreamingRecognizeResponse
 
 	// The callback for results
-	callBackFunc := func(response *transcribepb.StreamingRecognizeResponse) {
-		if response == nil {
+	callBackFunc := func(resp *transcribepb.StreamingRecognizeResponse) {
+		if resp == nil {
 			return
 		}
 
-		if response.Error != nil {
-			logger.Error("msg", "recognition error", "error", response.Error)
+		if resp.Error != nil {
+			logger.Error("msg", "recognition error", "error", resp.Error)
 		}
 
-		if !response.Result.IsPartial && len(response.Result.Alternatives) > 0 {
-			logger.Trace("chan", response.Result.AudioChannel, "Transcript", response.Result.Alternatives[0].TranscriptFormatted)
+		if !resp.Result.IsPartial && len(resp.Result.Alternatives) > 0 {
+			logger.Trace("chan", resp.Result.AudioChannel, "transcript", resp.Result.Alternatives[0].TranscriptFormatted)
 
-			resp = append(resp, response)
+			if outPath == "" {
+				fmt.Println(resp.Result.Alternatives[0].TranscriptFormatted)
+			} else {
+				responses = append(responses, resp)
+			}
 		}
 	}
 
@@ -117,7 +121,7 @@ func transcribe(ctx context.Context, logger log.Logger, c *client.Client,
 		return fmt.Errorf("failed to transcribe: %w", err)
 	}
 
-	if err = writeTranscript(outPath, resp); err != nil {
+	if err = writeResponses(outPath, responses); err != nil {
 		return fmt.Errorf("failed to write out transcript: %w", err)
 	}
 
@@ -146,12 +150,9 @@ func getDefaultModelID(ctx context.Context, c *client.Client) (string, error) {
 	return v[0].Id, nil
 }
 
-func writeTranscript(path string, response []*transcribepb.StreamingRecognizeResponse) error {
+func writeResponses(path string, responses []*transcribepb.StreamingRecognizeResponse) error {
 	if path == "" {
-		for i := 0; i < len(response); i++ {
-			fmt.Println(response[i].Result.Alternatives[0].TranscriptFormatted)
-		}
-
+		// empty path to write, do nothing.
 		return nil
 	}
 
@@ -165,7 +166,7 @@ func writeTranscript(path string, response []*transcribepb.StreamingRecognizeRes
 	enc := json.NewEncoder(outF)
 	enc.SetIndent("", "  ")
 
-	if err := enc.Encode(response); err != nil {
+	if err := enc.Encode(responses); err != nil {
 		return fmt.Errorf("failed to encode responses JSON: %w", err)
 	}
 
