@@ -25,7 +25,8 @@ import (
 
 var listModelsCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List models available in transcribe server.",
+	Short: "List models available in Transcribe server.",
+	Long:  "List out the information about the models Transcribe server can access.",
 	Run: func(cmd *cobra.Command, args []string) {
 		var opts []client.Option
 
@@ -51,12 +52,18 @@ var listModelsCmd = &cobra.Command{
 }
 
 func listModels(ctx context.Context, c *client.Client) error {
-	v, err := c.ListModels(ctx)
+	models, err := c.ListModels(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list models: %w", err)
 	}
 
-	fmt.Printf("%s\n", v)
+	fmt.Printf("Available Models:\n")
+
+	for _, mdl := range models {
+		fmt.Printf("    ID: %q\n", mdl.Id)
+		fmt.Printf("    Name: %q\n", mdl.Name)
+		fmt.Printf("    Attributes: %v\n\n", mdl.Attributes)
+	}
 
 	return nil
 }
