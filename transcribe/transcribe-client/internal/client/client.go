@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package client wraps the transcribe proto client and implements the interface
+// transcribepb.TranscribeServiceClient that can use GRPC to receive results from
+// Transcribe server.
 package client
 
 import (
@@ -84,7 +87,7 @@ type Option func(*clientArgs) error
 
 // WithStreamingBufferSize returns an Option that sets up the buffer size
 // (bytes) of each message sent from the Client to the server during streaming
-// GRPC calls.  Use this only if Cobalt recommends you to do so.  A value n>0 is
+// GRPC calls. Use this only if Cobalt recommends you to do so. A value n>0 is
 // required.
 func WithStreamingBufferSize(n uint32) Option {
 	return func(c *clientArgs) error {
@@ -98,6 +101,7 @@ func WithStreamingBufferSize(n uint32) Option {
 	}
 }
 
+// WithLogger returns an Option that sets up Client logger.
 func WithLogger(logger log.Logger) Option {
 	return func(c *clientArgs) error {
 		if logger == nil {
@@ -110,6 +114,8 @@ func WithLogger(logger log.Logger) Option {
 	}
 }
 
+// WithInsecure returns an Option that sets up Client without
+// using TLS enable.
 func WithInsecure() Option {
 	return func(c *clientArgs) error {
 		c.creds = insecure.NewCredentials()
@@ -118,6 +124,8 @@ func WithInsecure() Option {
 	}
 }
 
+// WithContext returns an Option that sets up context.Context to
+// use for GRPC client connection.
 func WithContext(ctx context.Context) Option {
 	return func(c *clientArgs) error {
 		if ctx == nil {
@@ -130,7 +138,8 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
+// Versions queries the version of the server.
+func (c *Client) Versions(ctx context.Context) (string, error) {
 	v, err := c.tclient.Version(ctx, &transcribepb.VersionRequest{})
 	if err != nil {
 		return "", err
@@ -139,6 +148,7 @@ func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
 	return v.Version, nil
 }
 
+// ListModels retrieves a list of available speech recognition models.
 func (c *Client) ListModels(ctx context.Context) ([]*transcribepb.Model, error) {
 	resp, err := c.tclient.ListModels(ctx, &transcribepb.ListModelsRequest{})
 	if err != nil {
@@ -156,6 +166,14 @@ func (c *Client) ListModels(ctx context.Context) ([]*transcribepb.Model, error) 
 // quickly and certainly not block.
 type RecognitionResponseHandler func(*transcribepb.StreamingRecognizeResponse)
 
+// StreamingRecognize wraps the bidirectional streaming API for performing
+// speech recognition. It sets up recognition using the given cfg. Data is
+// read from the given audio reader into a buffer and streamed to cubic
+// server. As results are received from Transcribe server, they will be
+// sent to the provided handlerFunc. If any error occurs while reading the audio
+// or sending it to the server, this method will immediately exit, returning that
+// error. This function returns only after all results have been passed to the
+// resultHandler.
 func (c *Client) StreamingRecognize(ctx context.Context,
 	cfg *transcribepb.RecognitionConfig,
 	audio io.Reader, handler RecognitionResponseHandler) error {
@@ -169,6 +187,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 		handler(resp)
 	}
 
+	// Creating stream.
 	stream, err := c.tclient.StreamingRecognize(ctx)
 	if err != nil {
 		return err
@@ -183,11 +202,11 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 	// capacity of two.
 	errch := make(chan error, 2) //nolint:gomnd // 2 is not magic number as explained above.
 
-	// start streaming audio in a separate goroutine
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 
+	// start streaming audio in a separate goroutine
 	go func() {
 		if err := sendaudio(stream, cfg, audio, c.streamingBufSize); err != nil && !errors.Is(err, io.EOF) {
 			// if sendaudio encountered io.EOF, it's only a
@@ -201,6 +220,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 		wg.Done()
 	}()
 
+	// Receive results from the stream.
 	for {
 		in, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -280,6 +300,17 @@ func sendaudio(stream transcribepb.TranscribeService_StreamingRecognizeClient,
 	}
 }
 
+// CompileContext compiles recognition context information, such as a specialized list of
+// words or phrases, into a compact, efficient form to send with subsequent
+// `StreamingRecognize` requests to customize speech recognition. For example, a list of
+// contact names may be compiled in a mobile app and sent with each recognition request
+// so that the app user's contact names are more likely to be recognized than arbitrary
+// names. This pre-compilation ensures that there is no added latency for the recognition
+// request. It is important to note that in order to compile context for a model, that
+// model has to support context in the first place, which can be verified by checking its
+// `ModelAttributes.ContextInfo` obtained via the `ListModels` method. Also, the compiled
+// data will be model specific; that is, the data compiled for one model will generally
+// not be usable with a different model.
 func (c *Client) CompileContext(ctx context.Context,
 	modelID, token string, phrases []*transcribepb.ContextPhrase) (*transcribepb.CompiledContext, error) {
 	req := &transcribepb.CompileContextRequest{
