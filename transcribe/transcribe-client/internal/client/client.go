@@ -34,7 +34,7 @@ import (
 const defaultStreamingBufsize uint32 = 1024
 
 type Client struct {
-	transcribe       transcribepb.TranscribeServiceClient
+	tclient          transcribepb.TranscribeServiceClient
 	conn             *grpc.ClientConn
 	log              log.Logger
 	streamingBufSize uint32
@@ -65,7 +65,7 @@ func NewClient(addr string, opts ...Option) (*Client, error) {
 	}
 
 	return &Client{
-		transcribe:       transcribepb.NewTranscribeServiceClient(conn),
+		tclient:          transcribepb.NewTranscribeServiceClient(conn),
 		conn:             conn,
 		streamingBufSize: args.streamingBufSize,
 		log:              args.log,
@@ -131,7 +131,7 @@ func WithContext(ctx context.Context) Option {
 }
 
 func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
-	v, err := c.transcribe.Version(ctx, &transcribepb.VersionRequest{})
+	v, err := c.tclient.Version(ctx, &transcribepb.VersionRequest{})
 	if err != nil {
 		return "", err
 	}
@@ -140,7 +140,7 @@ func (c *Client) CobaltVersions(ctx context.Context) (string, error) {
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]*transcribepb.Model, error) {
-	resp, err := c.transcribe.ListModels(ctx, &transcribepb.ListModelsRequest{})
+	resp, err := c.tclient.ListModels(ctx, &transcribepb.ListModelsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (c *Client) StreamingRecognize(ctx context.Context,
 		handler(resp)
 	}
 
-	stream, err := c.transcribe.StreamingRecognize(ctx)
+	stream, err := c.tclient.StreamingRecognize(ctx)
 	if err != nil {
 		return err
 	}
@@ -278,6 +278,22 @@ func sendaudio(stream transcribepb.TranscribeService_StreamingRecognizeClient,
 			return nil
 		}
 	}
+}
+
+func (c *Client) CompileContext(ctx context.Context,
+	modelID, token string, phrases []*transcribepb.ContextPhrase) (*transcribepb.CompiledContext, error) {
+	req := &transcribepb.CompileContextRequest{
+		ModelId: modelID,
+		Token:   token,
+		Phrases: phrases,
+	}
+
+	compiled, err := c.tclient.CompileContext(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return compiled.Context, nil
 }
 
 func (c *Client) Close() error {
