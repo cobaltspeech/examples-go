@@ -57,9 +57,6 @@ func NewClient(addr string, opts ...Option) (*Client, error) {
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(args.creds),
-		grpc.WithBlock(),
-		grpc.WithReturnConnectionError(),
-		grpc.FailOnNonTempDialError(true),
 	}
 
 	conn, err := grpc.DialContext(args.ctx, addr, dialOpts...)
