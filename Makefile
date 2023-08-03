@@ -60,6 +60,11 @@ build-diatheke-example:
 	go build -o ./bin/audio_client ./cmd/audio_client && \
 	go build -o ./bin/cli_client ./cmd/cli_client
 
+.PHONY: build-voicebio-example
+build-voicebio-example:
+	cd voicebio && go mod tidy && \
+	go build -o ./bin/voicebio-client .
+
 # Clean
 .PHONY: clean
 clean:
