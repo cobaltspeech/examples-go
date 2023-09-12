@@ -168,7 +168,7 @@ type RecognitionResponseHandler func(*transcribepb.StreamingRecognizeResponse)
 
 // StreamingRecognize wraps the bidirectional streaming API for performing
 // speech recognition. It sets up recognition using the given cfg. Data is
-// read from the given audio reader into a buffer and streamed to cubic
+// read from the given audio reader into a buffer and streamed to Transcribe
 // server. As results are received from Transcribe server, they will be
 // sent to the provided handlerFunc. If any error occurs while reading the audio
 // or sending it to the server, this method will immediately exit, returning that
